@@ -1,0 +1,84 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg: 240 10% 4%;
+  --surface: 240 8% 6%;
+  --surface-2: 240 7% 9%;
+  --border: 240 6% 14%;
+  --muted: 240 5% 18%;
+  --fg: 0 0% 98%;
+  --fg-muted: 240 5% 64%;
+  --primary: 234 89% 64%;
+  --primary-fg: 0 0% 100%;
+  --success: 142 71% 45%;
+  --warning: 38 92% 50%;
+  --danger: 0 84% 60%;
+}
+
+.light {
+  --bg: 0 0% 100%;
+  --surface: 240 10% 99%;
+  --surface-2: 240 6% 96%;
+  --border: 240 6% 90%;
+  --muted: 240 5% 92%;
+  --fg: 240 10% 8%;
+  --fg-muted: 240 4% 46%;
+  --primary: 234 89% 60%;
+  --primary-fg: 0 0% 100%;
+  --success: 142 71% 40%;
+  --warning: 38 92% 45%;
+  --danger: 0 72% 51%;
+}
+
+* {
+  border-color: hsl(var(--border));
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background-color: hsl(var(--bg));
+  color: hsl(var(--fg));
+  font-family: Inter, system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: hsl(var(--muted));
+  border-radius: 8px;
+  border: 2px solid hsl(var(--bg));
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+@layer utilities {
+  .animate-in {
+    animation: fade-in 0.2s ease-out;
+  }
+  @keyframes fade-in {
+    from {
+      opacity: 0;
+      transform: translateY(4px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  .glass {
+    background: hsl(var(--surface) / 0.7);
+    backdrop-filter: blur(12px);
+  }
+}

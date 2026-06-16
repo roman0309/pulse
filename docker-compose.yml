@@ -1,0 +1,123 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-metrics}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-metrics_secret}
+      POSTGRES_DB: ${POSTGRES_DB:-metrics_db}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./backend/migrations/postgres:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U metrics"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:24-alpine
+    environment:
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-metrics}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-metrics_secret}
+      CLICKHOUSE_DB: ${CLICKHOUSE_DB:-metrics_db}
+    ports:
+      - "8123:8123"
+      - "9000:9000"
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+      - ./backend/migrations/clickhouse:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:8123/ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 15
+      start_period: 30s
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.103.0
+    command: ["--config=/etc/otel-collector-config.yaml"]
+    volumes:
+      - ./otel-collector-config.yaml:/etc/otel-collector-config.yaml
+    ports:
+      - "4317:4317"   # OTLP gRPC
+      - "4318:4318"   # OTLP HTTP
+      - "8888:8888"   # Prometheus metrics
+    depends_on:
+      - backend
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    environment:
+      - PORT=8080
+      - POSTGRES_DSN=postgres://${POSTGRES_USER:-metrics}:${POSTGRES_PASSWORD:-metrics_secret}@postgres:5432/${POSTGRES_DB:-metrics_db}?sslmode=disable
+      - CLICKHOUSE_DSN=clickhouse://${CLICKHOUSE_USER:-metrics}:${CLICKHOUSE_PASSWORD:-metrics_secret}@clickhouse:9000/${CLICKHOUSE_DB:-metrics_db}
+      - JWT_SECRET=${JWT_SECRET:-super_secret_jwt_key_change_in_production}
+      - JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET:-super_secret_refresh_key_change_in_production}
+      - CORS_ORIGINS=http://localhost:3000
+      # Externally reachable URL remote agents push to. In production set this to
+      # your public Pulse address, e.g. https://pulse.example.com
+      - PUBLIC_INGEST_URL=${PUBLIC_INGEST_URL:-http://localhost:8080}
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      clickhouse:
+        condition: service_healthy
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+  # Sample instrumented application — represents the project's app running on
+  # a server. It serves real HTTP traffic, measures its own RED metrics
+  # (rate/errors/latency) and reports them to its project via OTLP.
+  sampleapp:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.sampleapp
+    environment:
+      - PULSE_ENDPOINT=http://backend:8080
+      - PULSE_KEY=pulse_demo_ingest_key
+      - PULSE_SERVICE=checkout-api
+      - PULSE_INTERVAL=10s
+      - TARGET_RPS=25
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+  # Pulse host agent — samples real system metrics and pushes them to the
+  # backend as OTLP, scoped to a project via the ingest key. On a real server
+  # you would run one of these per host with that project's key.
+  agent:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.agent
+    environment:
+      - PULSE_ENDPOINT=http://backend:8080
+      - PULSE_KEY=pulse_demo_ingest_key
+      - PULSE_SERVICE=demo-host
+      - PULSE_INTERVAL=10s
+      - HOST_PROC=/host/proc
+      - HOST_SYS=/host/sys
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  clickhouse_data:

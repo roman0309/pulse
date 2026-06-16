@@ -1,0 +1,72 @@
+# ============================================================
+# Pulse server agent — OpenTelemetry Collector config
+# ============================================================
+# Run this on the SERVER that hosts your application. It does two things:
+#
+#   1. PULLS (scrapes) your app's Prometheus /metrics endpoint locally
+#   2. Collects host metrics (CPU / RAM / disk / network) of the server
+#
+# ...and forwards both to Pulse over OTLP. One config per server; the ingest
+# key binds everything it sends to a single project.
+#
+# Run it:
+#   docker run -d --name pulse-agent \
+#     -v $PWD/otel-agent.yaml:/etc/otelcol-contrib/config.yaml \
+#     --network host \
+#     otel/opentelemetry-collector-contrib:0.103.0
+#
+# Replace YOUR_PULSE_HOST, YOUR_PROJECT_KEY, and the scrape target below.
+# ============================================================
+
+receivers:
+  # --- 1. Pull your application's Prometheus metrics ---
+  prometheus:
+    config:
+      scrape_configs:
+        - job_name: payment-api          # becomes the service name in Pulse
+          scrape_interval: 10s
+          static_configs:
+            - targets: ["localhost:9090"] # your app's /metrics endpoint
+
+  # --- 2. Collect host/server metrics ---
+  hostmetrics:
+    collection_interval: 10s
+    # When running the collector in a container, mount the host and set
+    # root_path: /hostfs (and mount -v /:/hostfs:ro) to read real host stats.
+    scrapers:
+      cpu: {}
+      memory: {}
+      load: {}
+      filesystem: {}
+      network: {}
+
+processors:
+  batch: {}
+  # Tag host metrics with a service name so they group under one service.
+  resource/host:
+    attributes:
+      - key: service.name
+        value: my-server
+        action: upsert
+
+exporters:
+  otlphttp/pulse:
+    endpoint: http://YOUR_PULSE_HOST:8080/otlp
+    encoding: proto
+    headers:
+      X-Pulse-Key: YOUR_PROJECT_KEY
+    tls:
+      insecure: true   # set false + configure TLS for production
+
+service:
+  pipelines:
+    # App metrics: service.name is taken automatically from the scrape job.
+    metrics/app:
+      receivers: [prometheus]
+      processors: [batch]
+      exporters: [otlphttp/pulse]
+    # Host metrics: tagged with the resource/host service name.
+    metrics/host:
+      receivers: [hostmetrics]
+      processors: [resource/host, batch]
+      exporters: [otlphttp/pulse]

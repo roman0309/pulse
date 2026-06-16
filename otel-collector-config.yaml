@@ -1,0 +1,49 @@
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  batch:
+    timeout: 1s
+    send_batch_size: 1000
+
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 512
+
+exporters:
+  # Forward received telemetry to the backend's native OTLP ingestion
+  # endpoints (/otlp/v1/{metrics,logs,traces}). The ingest key maps the data
+  # to a project. Replace the key for your own project.
+  otlphttp/backend:
+    endpoint: http://backend:8080/otlp
+    encoding: proto
+    headers:
+      X-Pulse-Key: pulse_demo_ingest_key
+    tls:
+      insecure: true
+
+  debug:
+    verbosity: normal
+
+service:
+  telemetry:
+    logs:
+      level: info
+  pipelines:
+    metrics:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [otlphttp/backend, debug]
+    logs:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [otlphttp/backend, debug]
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [otlphttp/backend, debug]

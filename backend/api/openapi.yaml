@@ -1,0 +1,281 @@
+openapi: 3.0.3
+info:
+  title: Pulse Observability API
+  version: "1.0.0"
+  description: >
+    Developer-first observability platform API. Combines metrics, logs, alerts,
+    deployments, an incident timeline and deterministic root-cause analysis.
+servers:
+  - url: http://localhost:8080/api/v1
+    description: Local development
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    Error:
+      type: object
+      properties:
+        error: { type: string }
+    TokenPair:
+      type: object
+      properties:
+        access_token: { type: string }
+        refresh_token: { type: string }
+        user: { $ref: "#/components/schemas/User" }
+    User:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        email: { type: string, format: email }
+        name: { type: string }
+        created_at: { type: string, format: date-time }
+    Organization:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        slug: { type: string }
+        role: { type: string, enum: [owner, admin, member] }
+    Project:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        organization_id: { type: string, format: uuid }
+        name: { type: string }
+        slug: { type: string }
+        description: { type: string }
+    Service:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        environment: { type: string }
+        status: { type: string, enum: [healthy, degraded, down] }
+    Deployment:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        service_id: { type: string, format: uuid }
+        version: { type: string }
+        commit_sha: { type: string }
+        environment: { type: string }
+        deployed_by: { type: string }
+        status: { type: string }
+        created_at: { type: string, format: date-time }
+    Alert:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        title: { type: string }
+        type: { type: string, enum: [high_latency, high_error_rate, service_down] }
+        severity: { type: string, enum: [low, medium, high, critical] }
+        status: { type: string, enum: [active, resolved] }
+        created_at: { type: string, format: date-time }
+        resolved_at: { type: string, format: date-time, nullable: true }
+    TimelineEvent:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        type: { type: string, enum: [deployment, alert, metric_spike, error_spike, recovery] }
+        title: { type: string }
+        description: { type: string }
+        occurred_at: { type: string, format: date-time }
+    MetricSeries:
+      type: object
+      properties:
+        metric_name: { type: string }
+        service_id: { type: string }
+        points:
+          type: array
+          items:
+            type: object
+            properties:
+              timestamp: { type: string, format: date-time }
+              value: { type: number }
+    LogEntry:
+      type: object
+      properties:
+        service_name: { type: string }
+        level: { type: string, enum: [info, warning, error] }
+        message: { type: string }
+        timestamp: { type: string, format: date-time }
+    DashboardSummary:
+      type: object
+      properties:
+        system_health: { type: string, enum: [healthy, degraded, down] }
+        active_alerts: { type: integer }
+        deployments_today: { type: integer }
+        error_rate: { type: number }
+    RCAResult:
+      type: object
+      properties:
+        summary: { type: string }
+        confidence: { type: number }
+        evidence: { type: array, items: { type: string } }
+        findings: { type: array, items: { type: string } }
+
+security:
+  - bearerAuth: []
+
+paths:
+  /auth/register:
+    post:
+      summary: Register a new user
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, name, password]
+              properties:
+                email: { type: string, format: email }
+                name: { type: string }
+                password: { type: string, minLength: 8 }
+      responses:
+        "201": { description: Created, content: { application/json: { schema: { $ref: "#/components/schemas/TokenPair" } } } }
+        "409": { description: Email already registered }
+  /auth/login:
+    post:
+      summary: Login
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string }
+                password: { type: string }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/TokenPair" } } } }
+        "401": { description: Invalid credentials }
+  /auth/refresh:
+    post:
+      summary: Rotate refresh token
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refresh_token]
+              properties:
+                refresh_token: { type: string }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/TokenPair" } } } }
+  /auth/logout:
+    post:
+      summary: Revoke a refresh token
+      security: []
+      responses:
+        "200": { description: OK }
+  /auth/me:
+    get:
+      summary: Current user
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/User" } } } }
+
+  /organizations:
+    get:
+      summary: List organizations for the current user
+      responses:
+        "200": { description: OK }
+    post:
+      summary: Create organization
+      responses:
+        "201": { description: Created }
+  /organizations/{orgId}/members:
+    get:
+      summary: List members
+      parameters: [{ name: orgId, in: path, required: true, schema: { type: string } }]
+      responses: { "200": { description: OK } }
+  /organizations/{orgId}/projects:
+    get:
+      summary: List projects in an organization
+      parameters: [{ name: orgId, in: path, required: true, schema: { type: string } }]
+      responses: { "200": { description: OK } }
+    post:
+      summary: Create project
+      parameters: [{ name: orgId, in: path, required: true, schema: { type: string } }]
+      responses: { "201": { description: Created } }
+
+  /projects/{projectId}:
+    get: { summary: Get project, parameters: [{ name: projectId, in: path, required: true, schema: { type: string } }], responses: { "200": { description: OK } } }
+    put: { summary: Update project, parameters: [{ name: projectId, in: path, required: true, schema: { type: string } }], responses: { "200": { description: OK } } }
+    delete: { summary: Delete project, parameters: [{ name: projectId, in: path, required: true, schema: { type: string } }], responses: { "200": { description: OK } } }
+  /projects/{projectId}/dashboard:
+    get:
+      summary: Dashboard summary
+      parameters: [{ name: projectId, in: path, required: true, schema: { type: string } }]
+      responses: { "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/DashboardSummary" } } } } }
+  /projects/{projectId}/timeline:
+    get:
+      summary: Incident timeline
+      parameters:
+        - { name: projectId, in: path, required: true, schema: { type: string } }
+        - { name: from, in: query, schema: { type: string, format: date-time } }
+        - { name: to, in: query, schema: { type: string, format: date-time } }
+      responses: { "200": { description: OK } }
+  /projects/{projectId}/analyze:
+    get:
+      summary: Run root-cause analysis
+      parameters:
+        - { name: projectId, in: path, required: true, schema: { type: string } }
+        - { name: window_minutes, in: query, schema: { type: integer, default: 120 } }
+      responses: { "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/RCAResult" } } } } }
+  /projects/{projectId}/metrics:
+    get:
+      summary: Query metric time series
+      parameters:
+        - { name: projectId, in: path, required: true, schema: { type: string } }
+        - { name: metric, in: query, required: true, schema: { type: string } }
+        - { name: service_id, in: query, schema: { type: string } }
+        - { name: from, in: query, schema: { type: string, format: date-time } }
+        - { name: to, in: query, schema: { type: string, format: date-time } }
+        - { name: step, in: query, schema: { type: integer, default: 60 } }
+      responses: { "200": { description: OK } }
+  /projects/{projectId}/logs:
+    get:
+      summary: Query logs
+      parameters:
+        - { name: projectId, in: path, required: true, schema: { type: string } }
+        - { name: service_id, in: query, schema: { type: string } }
+        - { name: level, in: query, schema: { type: string, enum: [info, warning, error] } }
+        - { name: search, in: query, schema: { type: string } }
+        - { name: limit, in: query, schema: { type: integer, default: 100 } }
+        - { name: offset, in: query, schema: { type: integer, default: 0 } }
+      responses: { "200": { description: OK } }
+  /projects/{projectId}/services:
+    get: { summary: List services, parameters: [{ name: projectId, in: path, required: true, schema: { type: string } }], responses: { "200": { description: OK } } }
+    post: { summary: Create service, parameters: [{ name: projectId, in: path, required: true, schema: { type: string } }], responses: { "201": { description: Created } } }
+  /services/{serviceId}:
+    put: { summary: Update service, parameters: [{ name: serviceId, in: path, required: true, schema: { type: string } }], responses: { "200": { description: OK } } }
+    delete: { summary: Delete service, parameters: [{ name: serviceId, in: path, required: true, schema: { type: string } }], responses: { "200": { description: OK } } }
+  /projects/{projectId}/deployments:
+    get: { summary: List deployments, parameters: [{ name: projectId, in: path, required: true, schema: { type: string } }], responses: { "200": { description: OK } } }
+    post: { summary: Record deployment, parameters: [{ name: projectId, in: path, required: true, schema: { type: string } }], responses: { "201": { description: Created } } }
+  /projects/{projectId}/alerts:
+    get: { summary: List alerts, parameters: [{ name: projectId, in: path, required: true, schema: { type: string } }], responses: { "200": { description: OK } } }
+    post: { summary: Create alert, parameters: [{ name: projectId, in: path, required: true, schema: { type: string } }], responses: { "201": { description: Created } } }
+  /alerts/{alertId}/resolve:
+    post: { summary: Resolve alert, parameters: [{ name: alertId, in: path, required: true, schema: { type: string } }], responses: { "200": { description: OK } } }
+  /projects/{projectId}/ingest/metrics:
+    post: { summary: Ingest metric points, parameters: [{ name: projectId, in: path, required: true, schema: { type: string } }], responses: { "202": { description: Accepted } } }
+  /projects/{projectId}/ingest/logs:
+    post: { summary: Ingest log entries, parameters: [{ name: projectId, in: path, required: true, schema: { type: string } }], responses: { "202": { description: Accepted } } }
+  /projects/{projectId}/ws:
+    get:
+      summary: WebSocket realtime channel (alerts, metrics, timeline). Auth via ?token=
+      parameters:
+        - { name: projectId, in: path, required: true, schema: { type: string } }
+        - { name: token, in: query, required: true, schema: { type: string } }
+      responses: { "101": { description: Switching Protocols } }

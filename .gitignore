@@ -1,0 +1,24 @@
+# env
+.env
+
+# node
+frontend/node_modules
+frontend/dist
+
+# go
+backend/server
+backend/server.exe
+backend/agent
+backend/agent.exe
+backend/sampleapp
+backend/sampleapp.exe
+pulse-agent
+pulse-agent-*
+
+# misc
+.DS_Store
+*.log
+
+# IDE
+.idea/
+.vscode/
