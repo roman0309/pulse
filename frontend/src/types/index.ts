@@ -130,6 +130,25 @@ export interface RCAResult {
   findings: string[];
 }
 
+export type RuleOperator = "gt" | "lt" | "gte" | "lte";
+
+export interface AlertRule {
+  id: string;
+  project_id: string;
+  name: string;
+  service_id: string | null;
+  metric: string;
+  operator: RuleOperator;
+  threshold: number;
+  for_seconds: number;
+  severity: AlertSeverity;
+  type: AlertType;
+  notify_type: "none" | "slack" | "webhook";
+  notify_url: string;
+  enabled: boolean;
+  created_at: string;
+}
+
 export interface IngestKey {
   id: string;
   project_id: string;

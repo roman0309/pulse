@@ -174,6 +174,54 @@ type TimelineEvent struct {
 	CreatedAt   time.Time         `json:"created_at"`
 }
 
+// ---------- Alert rules ----------
+
+type RuleOperator string
+
+const (
+	OpGreater      RuleOperator = "gt"
+	OpLess         RuleOperator = "lt"
+	OpGreaterEqual RuleOperator = "gte"
+	OpLessEqual    RuleOperator = "lte"
+)
+
+type AlertRule struct {
+	ID         uuid.UUID     `json:"id"`
+	ProjectID  uuid.UUID     `json:"project_id"`
+	Name       string        `json:"name"`
+	ServiceID  *uuid.UUID    `json:"service_id"`
+	Metric     string        `json:"metric"`
+	Operator   RuleOperator  `json:"operator"`
+	Threshold  float64       `json:"threshold"`
+	ForSeconds int           `json:"for_seconds"`
+	Severity   AlertSeverity `json:"severity"`
+	Type       AlertType     `json:"type"`
+	NotifyType string        `json:"notify_type"` // none | slack | webhook
+	NotifyURL  string        `json:"notify_url"`
+	Enabled    bool          `json:"enabled"`
+
+	BreachingSince *time.Time `json:"-"`
+	ActiveAlertID  *uuid.UUID `json:"-"`
+
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// Breached reports whether value violates the rule's condition.
+func (r *AlertRule) Breached(value float64) bool {
+	switch r.Operator {
+	case OpGreater:
+		return value > r.Threshold
+	case OpLess:
+		return value < r.Threshold
+	case OpGreaterEqual:
+		return value >= r.Threshold
+	case OpLessEqual:
+		return value <= r.Threshold
+	}
+	return false
+}
+
 // ---------- Metrics (ClickHouse) ----------
 
 type MetricPoint struct {

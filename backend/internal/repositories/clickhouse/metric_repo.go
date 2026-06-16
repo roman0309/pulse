@@ -84,6 +84,26 @@ func (r *MetricRepo) Query(ctx context.Context, projectID, serviceID, metricName
 	return out, nil
 }
 
+// EvalValue averages a metric over [since, now] for the alerting engine.
+func (r *MetricRepo) EvalValue(ctx context.Context, projectID, serviceID, metricName string, since time.Time) (float64, bool, error) {
+	query := `SELECT avg(value), count() FROM metrics_db.metrics
+	          WHERE project_id = ? AND metric_name = ? AND timestamp >= ?`
+	args := []any{projectID, metricName, since}
+	if serviceID != "" {
+		query += " AND service_id = ?"
+		args = append(args, serviceID)
+	}
+	var avg float64
+	var cnt uint64
+	if err := r.conn.QueryRow(ctx, query, args...).Scan(&avg, &cnt); err != nil {
+		return 0, false, err
+	}
+	if cnt == 0 {
+		return 0, false, nil
+	}
+	return avg, true, nil
+}
+
 func (r *MetricRepo) Latest(ctx context.Context, projectID, serviceID, metricName string) (float64, error) {
 	query := fmt.Sprintf(`
 		SELECT value FROM metrics_db.metrics

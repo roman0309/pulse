@@ -85,6 +85,19 @@ type MetricRepository interface {
 	Insert(ctx context.Context, points []entities.MetricPoint) error
 	Query(ctx context.Context, projectID string, serviceID, metricName string, from, to time.Time, stepSeconds int) ([]entities.MetricSeries, error)
 	Latest(ctx context.Context, projectID, serviceID, metricName string) (float64, error)
+	// EvalValue returns the average value of a metric over [since, now] for the
+	// alerting engine. ok is false when there are no data points in the window.
+	EvalValue(ctx context.Context, projectID, serviceID, metricName string, since time.Time) (value float64, ok bool, err error)
+}
+
+// AlertRuleRepository manages alert rule definitions and their evaluator state.
+type AlertRuleRepository interface {
+	Create(ctx context.Context, r *entities.AlertRule) error
+	Update(ctx context.Context, r *entities.AlertRule) error
+	Delete(ctx context.Context, projectID, ruleID uuid.UUID) error
+	ListByProject(ctx context.Context, projectID uuid.UUID) ([]entities.AlertRule, error)
+	ListEnabled(ctx context.Context) ([]entities.AlertRule, error)
+	SetState(ctx context.Context, ruleID uuid.UUID, breachingSince *time.Time, activeAlertID *uuid.UUID) error
 }
 
 // LogRepository (ClickHouse) stores and queries structured logs.

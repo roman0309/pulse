@@ -15,6 +15,7 @@ into a fast, Linear/Vercel-style UI.
 - **Metrics** — CPU, memory, request count/rate, error rate, latency P50/P95/P99 stored in ClickHouse with live updates.
 - **Logs** — structured logs with full-text search, level/service filters and infinite scrolling.
 - **Alerts** — high latency / high error rate / service down, with severity and resolve workflow.
+- **Alerting engine** — define rules (e.g. `error_rate > 5% for 5m`); a background evaluator watches live metrics, fires/resolves alerts automatically, adds them to the timeline and notifies Slack/webhook.
 - **Deployments** — release history correlated with incidents.
 - **Realtime** — WebSocket fan-out for alerts, metrics and timeline events.
 - **Auth & RBAC** — JWT access + refresh tokens, password hashing, org roles (owner/admin/member), rate limiting.

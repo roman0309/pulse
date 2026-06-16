@@ -60,6 +60,20 @@ type CreateAlertRequest struct {
 	Description string `json:"description" binding:"max=500"`
 }
 
+type AlertRuleRequest struct {
+	Name       string  `json:"name" binding:"required,max=200"`
+	ServiceID  string  `json:"service_id" binding:"omitempty,uuid"`
+	Metric     string  `json:"metric" binding:"required,max=50"`
+	Operator   string  `json:"operator" binding:"required,oneof=gt lt gte lte"`
+	Threshold  float64 `json:"threshold"`
+	ForSeconds int     `json:"for_seconds" binding:"min=0,max=86400"`
+	Severity   string  `json:"severity" binding:"required,oneof=low medium high critical"`
+	Type       string  `json:"type" binding:"required,oneof=high_latency high_error_rate service_down"`
+	NotifyType string  `json:"notify_type" binding:"omitempty,oneof=none slack webhook"`
+	NotifyURL  string  `json:"notify_url" binding:"omitempty,url,max=500"`
+	Enabled    *bool   `json:"enabled"`
+}
+
 // Ingestion DTOs (used by collector / agents).
 
 type IngestMetricsRequest struct {

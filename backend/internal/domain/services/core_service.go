@@ -31,6 +31,7 @@ type CoreService struct {
 	Metrics     repositories.MetricRepository
 	Logs        repositories.LogRepository
 	IngestKeys  repositories.IngestKeyRepository
+	AlertRules  repositories.AlertRuleRepository
 	Analyzer    analyzer.Analyzer
 	Hub         *ws.Hub
 }
@@ -358,6 +359,36 @@ func (s *CoreService) IngestMetrics(ctx context.Context, points []entities.Metri
 
 func (s *CoreService) IngestLogs(ctx context.Context, logs []entities.LogEntry) error {
 	return s.Logs.Insert(ctx, logs)
+}
+
+// ---------- Alert rules ----------
+
+func (s *CoreService) ListAlertRules(ctx context.Context, userID, projectID uuid.UUID) ([]entities.AlertRule, error) {
+	if _, err := s.requireProjectAccess(ctx, userID, projectID); err != nil {
+		return nil, err
+	}
+	return s.AlertRules.ListByProject(ctx, projectID)
+}
+
+func (s *CoreService) CreateAlertRule(ctx context.Context, userID uuid.UUID, rule *entities.AlertRule) error {
+	if _, err := s.requireProjectAccess(ctx, userID, rule.ProjectID); err != nil {
+		return err
+	}
+	return s.AlertRules.Create(ctx, rule)
+}
+
+func (s *CoreService) UpdateAlertRule(ctx context.Context, userID uuid.UUID, rule *entities.AlertRule) error {
+	if _, err := s.requireProjectAccess(ctx, userID, rule.ProjectID); err != nil {
+		return err
+	}
+	return s.AlertRules.Update(ctx, rule)
+}
+
+func (s *CoreService) DeleteAlertRule(ctx context.Context, userID, projectID, ruleID uuid.UUID) error {
+	if _, err := s.requireProjectAccess(ctx, userID, projectID); err != nil {
+		return err
+	}
+	return s.AlertRules.Delete(ctx, projectID, ruleID)
 }
 
 // ---------- Ingest keys (server onboarding) ----------

@@ -384,6 +384,106 @@ func (h *CoreHandler) Dashboard(c *gin.Context) {
 	c.JSON(http.StatusOK, summary)
 }
 
+// ---------- Alert rules ----------
+
+func (h *CoreHandler) ListAlertRules(c *gin.Context) {
+	projectID, ok := parseUUIDParam(c, "projectId")
+	if !ok {
+		return
+	}
+	rules, err := h.core.ListAlertRules(c.Request.Context(), middleware.UserID(c), projectID)
+	if err != nil {
+		handleDomainError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"rules": rules})
+}
+
+func ruleFromRequest(projectID uuid.UUID, req AlertRuleRequest) *entities.AlertRule {
+	rule := &entities.AlertRule{
+		ProjectID:  projectID,
+		Name:       req.Name,
+		Metric:     req.Metric,
+		Operator:   entities.RuleOperator(req.Operator),
+		Threshold:  req.Threshold,
+		ForSeconds: req.ForSeconds,
+		Severity:   entities.AlertSeverity(req.Severity),
+		Type:       entities.AlertType(req.Type),
+		NotifyType: req.NotifyType,
+		NotifyURL:  req.NotifyURL,
+		Enabled:    true,
+	}
+	if rule.NotifyType == "" {
+		rule.NotifyType = "none"
+	}
+	if req.Enabled != nil {
+		rule.Enabled = *req.Enabled
+	}
+	if req.ServiceID != "" {
+		if id, err := uuid.Parse(req.ServiceID); err == nil {
+			rule.ServiceID = &id
+		}
+	}
+	return rule
+}
+
+func (h *CoreHandler) CreateAlertRule(c *gin.Context) {
+	projectID, ok := parseUUIDParam(c, "projectId")
+	if !ok {
+		return
+	}
+	var req AlertRuleRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		badRequest(c, err)
+		return
+	}
+	rule := ruleFromRequest(projectID, req)
+	if err := h.core.CreateAlertRule(c.Request.Context(), middleware.UserID(c), rule); err != nil {
+		handleDomainError(c, err)
+		return
+	}
+	c.JSON(http.StatusCreated, rule)
+}
+
+func (h *CoreHandler) UpdateAlertRule(c *gin.Context) {
+	projectID, ok := parseUUIDParam(c, "projectId")
+	if !ok {
+		return
+	}
+	ruleID, ok := parseUUIDParam(c, "ruleId")
+	if !ok {
+		return
+	}
+	var req AlertRuleRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		badRequest(c, err)
+		return
+	}
+	rule := ruleFromRequest(projectID, req)
+	rule.ID = ruleID
+	if err := h.core.UpdateAlertRule(c.Request.Context(), middleware.UserID(c), rule); err != nil {
+		handleDomainError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, rule)
+}
+
+func (h *CoreHandler) DeleteAlertRule(c *gin.Context) {
+	projectID, ok := parseUUIDParam(c, "projectId")
+	if !ok {
+		return
+	}
+	ruleID, ok := parseUUIDParam(c, "ruleId")
+	if !ok {
+		return
+	}
+	if err := h.core.DeleteAlertRule(c.Request.Context(), middleware.UserID(c), projectID, ruleID); err != nil {
+		handleDomainError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"ok": true})
+}
+
 // ---------- Ingest keys (server onboarding) ----------
 
 func (h *CoreHandler) ListIngestKeys(c *gin.Context) {

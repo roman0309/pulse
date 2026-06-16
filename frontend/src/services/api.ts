@@ -2,6 +2,7 @@ import { useAuthStore } from "@/store/auth";
 import type {
   Alert,
   DashboardSummary,
+  AlertRule,
   Deployment,
   IngestKey,
   LogEntry,
@@ -260,6 +261,24 @@ export const api = {
     }),
   resolveAlert: (alertId: string) =>
     request<Alert>(`/alerts/${alertId}/resolve`, { method: "POST" }),
+
+  // --- alert rules (alerting engine) ---
+  listAlertRules: (projectId: string) =>
+    request<{ rules: AlertRule[] }>(
+      `/projects/${projectId}/alert-rules`
+    ).then((r) => r.rules ?? []),
+  createAlertRule: (projectId: string, body: Partial<AlertRule>) =>
+    request<AlertRule>(`/projects/${projectId}/alert-rules`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  updateAlertRule: (projectId: string, ruleId: string, body: Partial<AlertRule>) =>
+    request<AlertRule>(`/projects/${projectId}/alert-rules/${ruleId}`, {
+      method: "PUT",
+      body: JSON.stringify(body),
+    }),
+  deleteAlertRule: (projectId: string, ruleId: string) =>
+    request(`/projects/${projectId}/alert-rules/${ruleId}`, { method: "DELETE" }),
 
   // --- ingest keys (server onboarding) ---
   listIngestKeys: (projectId: string) =>

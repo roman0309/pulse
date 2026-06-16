@@ -20,12 +20,14 @@ import {
   Modal,
 } from "@/components/common";
 import { relativeTime } from "@/lib/utils";
+import { AlertRules } from "./AlertRules";
 
 export function AlertsPage() {
   const { projectId } = useParams();
   const qc = useQueryClient();
   const [filter, setFilter] = useState("");
   const [modal, setModal] = useState(false);
+  const [tab, setTab] = useState<"alerts" | "rules">("alerts");
 
   const alerts = useQuery({
     queryKey: ["alerts", projectId, filter],
@@ -47,22 +49,45 @@ export function AlertsPage() {
     <div>
       <PageHeader
         title="Alerts"
-        description="Active and resolved incidents"
+        description="Active and resolved incidents, and the rules that fire them"
         actions={
-          <div className="flex items-center gap-2">
-            <Select value={filter} onChange={(e) => setFilter(e.target.value)}>
-              <option value="">All</option>
-              <option value="active">Active</option>
-              <option value="resolved">Resolved</option>
-            </Select>
-            <Button size="sm" onClick={() => setModal(true)}>
-              <Plus className="h-4 w-4" /> New alert
-            </Button>
-          </div>
+          tab === "alerts" ? (
+            <div className="flex items-center gap-2">
+              <Select value={filter} onChange={(e) => setFilter(e.target.value)}>
+                <option value="">All</option>
+                <option value="active">Active</option>
+                <option value="resolved">Resolved</option>
+              </Select>
+              <Button size="sm" onClick={() => setModal(true)}>
+                <Plus className="h-4 w-4" /> New alert
+              </Button>
+            </div>
+          ) : undefined
         }
       />
 
-      {alerts.isLoading ? (
+      {/* Tabs */}
+      <div className="flex gap-1 mb-4 border-b border-border">
+        {(["alerts", "rules"] as const).map((t) => (
+          <button
+            key={t}
+            onClick={() => setTab(t)}
+            className={`px-3 py-2 text-sm font-medium -mb-px border-b-2 transition ${
+              tab === t
+                ? "border-primary text-fg"
+                : "border-transparent text-fg-muted hover:text-fg"
+            }`}
+          >
+            {t === "alerts" ? "Alerts" : "Rules"}
+          </button>
+        ))}
+      </div>
+
+      {tab === "rules" && <AlertRules projectId={projectId!} />}
+
+      {tab === "alerts" && (
+        <>
+          {alerts.isLoading ? (
         <Spinner />
       ) : alerts.data && alerts.data.length > 0 ? (
         <div className="space-y-2">
@@ -116,15 +141,17 @@ export function AlertsPage() {
         />
       )}
 
-      <CreateAlertModal
-        open={modal}
-        projectId={projectId!}
-        onClose={() => setModal(false)}
-        onCreated={() => {
-          qc.invalidateQueries({ queryKey: ["alerts", projectId] });
-          setModal(false);
-        }}
-      />
+          <CreateAlertModal
+            open={modal}
+            projectId={projectId!}
+            onClose={() => setModal(false)}
+            onCreated={() => {
+              qc.invalidateQueries({ queryKey: ["alerts", projectId] });
+              setModal(false);
+            }}
+          />
+        </>
+      )}
     </div>
   );
 }

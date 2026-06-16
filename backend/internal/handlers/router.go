@@ -100,6 +100,12 @@ func NewRouter(
 			p.GET("/alerts", core.ListAlerts)
 			p.POST("/alerts", core.CreateAlert)
 
+			// alert rules (alerting engine)
+			p.GET("/alert-rules", core.ListAlertRules)
+			p.POST("/alert-rules", core.CreateAlertRule)
+			p.PUT("/alert-rules/:ruleId", core.UpdateAlertRule)
+			p.DELETE("/alert-rules/:ruleId", core.DeleteAlertRule)
+
 			// ingest key management (server onboarding)
 			p.GET("/ingest-keys", core.ListIngestKeys)
 			p.POST("/ingest-keys", core.CreateIngestKey)

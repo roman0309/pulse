@@ -9,6 +9,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/acme/observability/internal/alerting"
 	"github.com/acme/observability/internal/analyzer"
 	"github.com/acme/observability/internal/config"
 	"github.com/acme/observability/internal/domain/services"
@@ -17,6 +18,7 @@ import (
 	pgrepo "github.com/acme/observability/internal/repositories/postgres"
 	"github.com/acme/observability/internal/ws"
 	"github.com/acme/observability/pkg/logger"
+	"github.com/acme/observability/pkg/notify"
 )
 
 func main() {
@@ -51,6 +53,7 @@ func main() {
 	alertRepo := pgrepo.NewAlertRepo(pg)
 	timelineRepo := pgrepo.NewTimelineRepo(pg)
 	ingestKeyRepo := pgrepo.NewIngestKeyRepo(pg)
+	alertRuleRepo := pgrepo.NewAlertRuleRepo(pg)
 	metricRepo := chrepo.NewMetricRepo(ch)
 	logRepo := chrepo.NewLogRepo(ch)
 
@@ -70,9 +73,27 @@ func main() {
 		Metrics:     metricRepo,
 		Logs:        logRepo,
 		IngestKeys:  ingestKeyRepo,
+		AlertRules:  alertRuleRepo,
 		Analyzer:    analyzer.NewDeterministic(),
 		Hub:         hub,
 	}
+
+	// --- Alert evaluator (background) ---
+	evaluator := &alerting.Evaluator{
+		Rules:    alertRuleRepo,
+		Metrics:  metricRepo,
+		Alerts:   alertRepo,
+		Timeline: timelineRepo,
+		Services: serviceRepo,
+		Hub:      hub,
+		Notifier: notify.New(),
+		Interval: 15 * time.Second,
+		Window:   2 * time.Minute,
+		Log:      log,
+	}
+	evalCtx, stopEval := context.WithCancel(context.Background())
+	defer stopEval()
+	go evaluator.Run(evalCtx)
 
 	// --- Handlers + Router ---
 	authHandler := handlers.NewAuthHandler(authService)
