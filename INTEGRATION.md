@@ -222,6 +222,47 @@ docker run -d --name pulse-agent --restart unless-stopped \
 No domains, no open ports, traffic encrypted by WireGuard. View the UI from any device
 on your tailnet at the same URL.
 
+## Automated agent rollout
+
+### One host — one line
+
+Instead of the long `docker run`, use the agent installer:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/roman0309/pulse/main/deploy/install-agent.sh \
+  | PULSE_ENDPOINT=https://pulse.your-tailnet.ts.net PULSE_KEY=YOUR_PROJECT_KEY sh
+```
+
+`PULSE_SERVICE` defaults to the host's name. Re-running it upgrades the agent.
+
+### Many hosts — over SSH from one place
+
+Roll it out to a fleet from the Pulse host (or any box with SSH access):
+
+```bash
+PULSE_ENDPOINT=https://pulse.your-tailnet.ts.net PULSE_KEY=YOUR_PROJECT_KEY \
+  ./deploy/provision-agents.sh root@web1 root@web2 root@db1
+# or:  ... ./deploy/provision-agents.sh -f hosts.txt
+```
+
+It SSHes to each host and runs the installer there. Each agent reports under that
+host's own name.
+
+**Keyless with Tailscale SSH** (recommended — no SSH keys to manage, pairs with the
+[tailscale profile](#private-networking-with-tailscale-no-domain-no-public-ports)):
+enable `tailscale up --ssh` on the targets and allow it in your tailnet ACLs, then:
+
+```bash
+SSH="tailscale ssh" PULSE_ENDPOINT=... PULSE_KEY=... \
+  ./deploy/provision-agents.sh root@web1 root@web2
+```
+
+### Large fleets
+
+For serious fleets, call `install-agent.sh` from your existing tooling — an Ansible
+task, a cloud-init `runcmd`, or a Kubernetes DaemonSet — rather than the SSH loop.
+The installer is the stable primitive; the orchestration is yours to choose.
+
 ## Step 3 — Verify it's flowing
 
 ```bash
