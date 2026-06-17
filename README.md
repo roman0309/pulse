@@ -107,9 +107,15 @@ Then open **http://localhost** and register the first user (becomes the owner).
 To customize, edit the generated `pulse/.env` (see [`deploy/.env.example`](deploy/.env.example))
 and `docker compose up -d` again. Production guidance: [DEPLOYMENT.md](DEPLOYMENT.md).
 
-**Connecting servers without a domain?** Pulse ships an optional Tailscale profile —
-`docker compose --profile tailscale up -d` exposes it privately at
-`https://pulse.<your-tailnet>.ts.net` (auto HTTPS, no public ports). See
+**Connecting servers without a domain?** One command puts Pulse on your private
+Tailscale network with automatic HTTPS and no public ports:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/roman0309/pulse/main/deploy/install.sh \
+  | TS_AUTHKEY=tskey-auth-xxxx sh
+```
+
+It auto-detects your `https://pulse.<your-tailnet>.ts.net` address. See
 [INTEGRATION.md](INTEGRATION.md#private-networking-with-tailscale-no-domain-no-public-ports).
 
 ---

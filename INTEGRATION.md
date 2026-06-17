@@ -183,14 +183,27 @@ PUBLIC_INGEST_URL=https://pulse.your-tailnet.ts.net
 CORS_ORIGINS=https://pulse.your-tailnet.ts.net
 ```
 
-Start with the tailscale profile (no need to publish ports 80/8080 — you can firewall
-them off entirely):
+### One command
+
+The installer does it all — pass your auth key and it brings Pulse up on the tailnet,
+auto-detects the `*.ts.net` address, and wires `PUBLIC_INGEST_URL` for you:
 
 ```bash
+curl -fsSL https://raw.githubusercontent.com/roman0309/pulse/main/deploy/install.sh \
+  | TS_AUTHKEY=tskey-auth-xxxxxxxx sh
+```
+
+It prints the private URL (e.g. `https://pulse.your-tailnet.ts.net`) when ready.
+
+### Or manually
+
+```bash
+# in deploy/.env: TS_AUTHKEY, TS_HOSTNAME, PUBLIC_INGEST_URL, CORS_ORIGINS
 docker compose --profile tailscale up -d
 ```
 
-Pulse is now at **`https://pulse.your-tailnet.ts.net`** for anyone on your tailnet.
+Either way, no public ports are needed — you can firewall off 80/8080 entirely. Pulse is
+reachable at **`https://<TS_HOSTNAME>.your-tailnet.ts.net`** for anyone on your tailnet.
 
 **On each agent / app server** — join the tailnet, then point the agent at the private URL:
 
