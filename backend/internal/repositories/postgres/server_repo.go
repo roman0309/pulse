@@ -1,0 +1,67 @@
+package postgres
+
+import (
+	"context"
+	"errors"
+
+	"github.com/acme/observability/internal/domain/entities"
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
+)
+
+type ServerRepo struct{ db *pgxpool.Pool }
+
+func NewServerRepo(db *pgxpool.Pool) *ServerRepo { return &ServerRepo{db: db} }
+
+func (r *ServerRepo) Create(ctx context.Context, s *entities.ManagedServer) error {
+	return r.db.QueryRow(ctx,
+		`INSERT INTO managed_servers (project_id, name, ssh_target, status)
+		 VALUES ($1,$2,$3,$4) RETURNING id, created_at, updated_at`,
+		s.ProjectID, s.Name, s.SSHTarget, s.Status,
+	).Scan(&s.ID, &s.CreatedAt, &s.UpdatedAt)
+}
+
+func (r *ServerRepo) ListByProject(ctx context.Context, projectID uuid.UUID) ([]entities.ManagedServer, error) {
+	rows, err := r.db.Query(ctx,
+		`SELECT id, project_id, name, ssh_target, status, last_result, ingest_key_id, created_at, updated_at
+		 FROM managed_servers WHERE project_id=$1 ORDER BY created_at DESC`, projectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []entities.ManagedServer
+	for rows.Next() {
+		var s entities.ManagedServer
+		if err := rows.Scan(&s.ID, &s.ProjectID, &s.Name, &s.SSHTarget, &s.Status, &s.LastResult, &s.IngestKeyID, &s.CreatedAt, &s.UpdatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, s)
+	}
+	return out, rows.Err()
+}
+
+func (r *ServerRepo) GetByID(ctx context.Context, id uuid.UUID) (*entities.ManagedServer, error) {
+	s := &entities.ManagedServer{}
+	err := r.db.QueryRow(ctx,
+		`SELECT id, project_id, name, ssh_target, status, last_result, ingest_key_id, created_at, updated_at
+		 FROM managed_servers WHERE id=$1`, id,
+	).Scan(&s.ID, &s.ProjectID, &s.Name, &s.SSHTarget, &s.Status, &s.LastResult, &s.IngestKeyID, &s.CreatedAt, &s.UpdatedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, ErrNotFound
+	}
+	return s, err
+}
+
+func (r *ServerRepo) Update(ctx context.Context, s *entities.ManagedServer) error {
+	_, err := r.db.Exec(ctx,
+		`UPDATE managed_servers SET name=$2, ssh_target=$3, status=$4, last_result=$5, ingest_key_id=$6 WHERE id=$1`,
+		s.ID, s.Name, s.SSHTarget, s.Status, s.LastResult, s.IngestKeyID,
+	)
+	return err
+}
+
+func (r *ServerRepo) Delete(ctx context.Context, projectID, id uuid.UUID) error {
+	_, err := r.db.Exec(ctx, `DELETE FROM managed_servers WHERE id=$1 AND project_id=$2`, id, projectID)
+	return err
+}

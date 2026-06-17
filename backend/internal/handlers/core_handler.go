@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"net/http"
 	"time"
 
@@ -383,6 +384,75 @@ func (h *CoreHandler) Dashboard(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, summary)
 }
+
+// ---------- Managed servers ----------
+
+func (h *CoreHandler) ListServers(c *gin.Context) {
+	projectID, ok := parseUUIDParam(c, "projectId")
+	if !ok {
+		return
+	}
+	servers, err := h.core.ListServers(c.Request.Context(), middleware.UserID(c), projectID)
+	if err != nil {
+		handleDomainError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"servers": servers})
+}
+
+func (h *CoreHandler) AddServer(c *gin.Context) {
+	projectID, ok := parseUUIDParam(c, "projectId")
+	if !ok {
+		return
+	}
+	var req struct {
+		Name      string `json:"name" binding:"max=100"`
+		SSHTarget string `json:"ssh_target" binding:"required,max=200"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		badRequest(c, err)
+		return
+	}
+	srv, err := h.core.AddServer(c.Request.Context(), middleware.UserID(c), projectID, req.Name, req.SSHTarget)
+	if err != nil {
+		handleDomainError(c, err)
+		return
+	}
+	c.JSON(http.StatusCreated, srv)
+}
+
+func (h *CoreHandler) DeleteServer(c *gin.Context) {
+	projectID, ok := parseUUIDParam(c, "projectId")
+	if !ok {
+		return
+	}
+	serverID, ok := parseUUIDParam(c, "serverId")
+	if !ok {
+		return
+	}
+	if err := h.core.DeleteServer(c.Request.Context(), middleware.UserID(c), projectID, serverID); err != nil {
+		handleDomainError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"ok": true})
+}
+
+func (h *CoreHandler) serverAction(c *gin.Context, fn func(ctx context.Context, userID, serverID uuid.UUID) (*entities.ManagedServer, error)) {
+	serverID, ok := parseUUIDParam(c, "serverId")
+	if !ok {
+		return
+	}
+	srv, err := fn(c.Request.Context(), middleware.UserID(c), serverID)
+	if err != nil {
+		handleDomainError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, srv)
+}
+
+func (h *CoreHandler) InstallAgent(c *gin.Context) { h.serverAction(c, h.core.InstallAgent) }
+func (h *CoreHandler) RemoveAgent(c *gin.Context)  { h.serverAction(c, h.core.RemoveAgent) }
+func (h *CoreHandler) ServerStatus(c *gin.Context) { h.serverAction(c, h.core.CheckStatus) }
 
 // ---------- Alert rules ----------
 

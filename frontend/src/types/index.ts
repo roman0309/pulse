@@ -130,6 +130,16 @@ export interface RCAResult {
   findings: string[];
 }
 
+export interface ManagedServer {
+  id: string;
+  project_id: string;
+  name: string;
+  ssh_target: string;
+  status: "pending" | "installed" | "removed" | "error";
+  last_result: string;
+  created_at: string;
+}
+
 export type RuleOperator = "gt" | "lt" | "gte" | "lte";
 
 export interface AlertRule {

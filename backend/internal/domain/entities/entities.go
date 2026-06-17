@@ -67,6 +67,20 @@ type TeamMember struct {
 	CreatedAt      time.Time `json:"created_at"`
 }
 
+// ---------- Managed servers (remote agent management via Tailscale SSH) ----------
+
+type ManagedServer struct {
+	ID          uuid.UUID  `json:"id"`
+	ProjectID   uuid.UUID  `json:"project_id"`
+	Name        string     `json:"name"`
+	SSHTarget   string     `json:"ssh_target"`
+	Status      string     `json:"status"`
+	LastResult  string     `json:"last_result"`
+	IngestKeyID *uuid.UUID `json:"-"`
+	CreatedAt   time.Time  `json:"created_at"`
+	UpdatedAt   time.Time  `json:"updated_at"`
+}
+
 // ---------- Projects ----------
 
 type Project struct {

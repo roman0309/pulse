@@ -15,6 +15,7 @@ import (
 	"github.com/acme/observability/internal/domain/services"
 	"github.com/acme/observability/internal/handlers"
 	"github.com/acme/observability/internal/migrate"
+	"github.com/acme/observability/internal/remote"
 	chrepo "github.com/acme/observability/internal/repositories/clickhouse"
 	pgrepo "github.com/acme/observability/internal/repositories/postgres"
 	"github.com/acme/observability/internal/ws"
@@ -66,6 +67,7 @@ func main() {
 	timelineRepo := pgrepo.NewTimelineRepo(pg)
 	ingestKeyRepo := pgrepo.NewIngestKeyRepo(pg)
 	alertRuleRepo := pgrepo.NewAlertRuleRepo(pg)
+	serverRepo := pgrepo.NewServerRepo(pg)
 	metricRepo := chrepo.NewMetricRepo(ch)
 	logRepo := chrepo.NewLogRepo(ch)
 
@@ -84,10 +86,13 @@ func main() {
 		Timeline:    timelineRepo,
 		Metrics:     metricRepo,
 		Logs:        logRepo,
-		IngestKeys:  ingestKeyRepo,
-		AlertRules:  alertRuleRepo,
-		Analyzer:    analyzer.NewDeterministic(),
-		Hub:         hub,
+		IngestKeys:      ingestKeyRepo,
+		AlertRules:      alertRuleRepo,
+		Servers:         serverRepo,
+		Analyzer:        analyzer.NewDeterministic(),
+		Hub:             hub,
+		Exec:            remote.NewTailscaleSSH(),
+		PublicIngestURL: cfg.PublicIngestURL,
 	}
 
 	// --- Alert evaluator (background) ---

@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"regexp"
 	"strings"
 	"time"
@@ -12,6 +13,7 @@ import (
 	"github.com/acme/observability/internal/analyzer"
 	"github.com/acme/observability/internal/domain/entities"
 	"github.com/acme/observability/internal/domain/repositories"
+	"github.com/acme/observability/internal/remote"
 	"github.com/acme/observability/internal/ws"
 	"github.com/acme/observability/pkg/hash"
 	"github.com/google/uuid"
@@ -32,8 +34,140 @@ type CoreService struct {
 	Logs        repositories.LogRepository
 	IngestKeys  repositories.IngestKeyRepository
 	AlertRules  repositories.AlertRuleRepository
+	Servers     repositories.ServerRepository
 	Analyzer    analyzer.Analyzer
 	Hub         *ws.Hub
+	Exec        remote.Executor
+	// PublicIngestURL is the address agents push to; injected into remote installs.
+	PublicIngestURL string
+}
+
+const agentInstallerURL = "https://raw.githubusercontent.com/roman0309/pulse/main/deploy/install-agent.sh"
+
+// ---------- Managed servers (remote agent management over Tailscale SSH) ----------
+
+func (s *CoreService) ListServers(ctx context.Context, userID, projectID uuid.UUID) ([]entities.ManagedServer, error) {
+	if _, err := s.requireProjectAccess(ctx, userID, projectID); err != nil {
+		return nil, err
+	}
+	return s.Servers.ListByProject(ctx, projectID)
+}
+
+func (s *CoreService) AddServer(ctx context.Context, userID, projectID uuid.UUID, name, sshTarget string) (*entities.ManagedServer, error) {
+	if _, err := s.requireProjectAccess(ctx, userID, projectID); err != nil {
+		return nil, err
+	}
+	if !remote.ValidateTarget(sshTarget) {
+		return nil, remote.ErrBadTarget
+	}
+	if name == "" {
+		name = sshTarget
+	}
+	srv := &entities.ManagedServer{ProjectID: projectID, Name: name, SSHTarget: sshTarget, Status: "pending"}
+	return srv, s.Servers.Create(ctx, srv)
+}
+
+func (s *CoreService) DeleteServer(ctx context.Context, userID, projectID, serverID uuid.UUID) error {
+	srv, err := s.Servers.GetByID(ctx, serverID)
+	if err != nil {
+		return err
+	}
+	if _, err := s.requireProjectAccess(ctx, userID, srv.ProjectID); err != nil {
+		return err
+	}
+	if srv.IngestKeyID != nil {
+		_ = s.IngestKeys.Delete(ctx, projectID, *srv.IngestKeyID)
+	}
+	return s.Servers.Delete(ctx, projectID, serverID)
+}
+
+// InstallAgent provisions the host agent on the server via Tailscale SSH. It
+// mints a dedicated ingest key for the server and passes it to the installer.
+func (s *CoreService) InstallAgent(ctx context.Context, userID, serverID uuid.UUID) (*entities.ManagedServer, error) {
+	srv, err := s.serverForUser(ctx, userID, serverID)
+	if err != nil {
+		return nil, err
+	}
+	key, err := s.CreateIngestKey(ctx, userID, srv.ProjectID, srv.Name)
+	if err != nil {
+		return nil, err
+	}
+	endpoint := s.PublicIngestURL
+	if endpoint == "" {
+		endpoint = "http://localhost:8080"
+	}
+	cmd := fmt.Sprintf("curl -fsSL %s | PULSE_ENDPOINT=%s PULSE_KEY=%s PULSE_SERVICE=%s sh",
+		agentInstallerURL, endpoint, key.Token, srv.Name)
+	out, runErr := s.Exec.Run(ctx, srv.SSHTarget, cmd)
+
+	srv.IngestKeyID = &key.ID
+	srv.LastResult = truncate(out, 2000)
+	if runErr != nil {
+		srv.Status = "error"
+		srv.LastResult = truncate(out+"\n"+runErr.Error(), 2000)
+	} else {
+		srv.Status = "installed"
+	}
+	_ = s.Servers.Update(ctx, srv)
+	return srv, nil
+}
+
+// RemoveAgent stops the agent on the server and revokes its ingest key.
+func (s *CoreService) RemoveAgent(ctx context.Context, userID, serverID uuid.UUID) (*entities.ManagedServer, error) {
+	srv, err := s.serverForUser(ctx, userID, serverID)
+	if err != nil {
+		return nil, err
+	}
+	out, runErr := s.Exec.Run(ctx, srv.SSHTarget, "docker rm -f pulse-agent pulse-beyla 2>/dev/null; echo removed")
+	if srv.IngestKeyID != nil {
+		_ = s.IngestKeys.Delete(ctx, srv.ProjectID, *srv.IngestKeyID)
+		srv.IngestKeyID = nil
+	}
+	srv.LastResult = truncate(out, 2000)
+	srv.Status = "removed"
+	if runErr != nil {
+		srv.Status = "error"
+		srv.LastResult = truncate(out+"\n"+runErr.Error(), 2000)
+	}
+	_ = s.Servers.Update(ctx, srv)
+	return srv, nil
+}
+
+// CheckStatus queries whether the agent container is running on the server.
+func (s *CoreService) CheckStatus(ctx context.Context, userID, serverID uuid.UUID) (*entities.ManagedServer, error) {
+	srv, err := s.serverForUser(ctx, userID, serverID)
+	if err != nil {
+		return nil, err
+	}
+	out, runErr := s.Exec.Run(ctx, srv.SSHTarget,
+		"docker ps --filter name=pulse-agent --filter name=pulse-beyla --format '{{.Names}} {{.Status}}'")
+	srv.LastResult = truncate(out, 2000)
+	if runErr != nil {
+		srv.LastResult = truncate(out+"\n"+runErr.Error(), 2000)
+	}
+	_ = s.Servers.Update(ctx, srv)
+	return srv, nil
+}
+
+func (s *CoreService) serverForUser(ctx context.Context, userID, serverID uuid.UUID) (*entities.ManagedServer, error) {
+	srv, err := s.Servers.GetByID(ctx, serverID)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := s.requireProjectAccess(ctx, userID, srv.ProjectID); err != nil {
+		return nil, err
+	}
+	if s.Exec == nil {
+		return nil, errors.New("remote execution is not enabled on this Pulse instance")
+	}
+	return srv, nil
+}
+
+func truncate(s string, n int) string {
+	if len(s) > n {
+		return s[:n]
+	}
+	return s
 }
 
 var slugRe = regexp.MustCompile(`[^a-z0-9]+`)

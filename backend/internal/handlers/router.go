@@ -107,6 +107,14 @@ func NewRouter(
 			p.PUT("/alert-rules/:ruleId", core.UpdateAlertRule)
 			p.DELETE("/alert-rules/:ruleId", core.DeleteAlertRule)
 
+			// managed servers (remote agent management via Tailscale SSH)
+			p.GET("/servers", core.ListServers)
+			p.POST("/servers", core.AddServer)
+			p.DELETE("/servers/:serverId", core.DeleteServer)
+			p.POST("/servers/:serverId/install", core.InstallAgent)
+			p.POST("/servers/:serverId/remove", core.RemoveAgent)
+			p.POST("/servers/:serverId/status", core.ServerStatus)
+
 			// ingest key management (server onboarding)
 			p.GET("/ingest-keys", core.ListIngestKeys)
 			p.POST("/ingest-keys", core.CreateIngestKey)

@@ -6,6 +6,7 @@ import type {
   Deployment,
   IngestKey,
   LogEntry,
+  ManagedServer,
   MetricSeries,
   Organization,
   Project,
@@ -279,6 +280,23 @@ export const api = {
     }),
   deleteAlertRule: (projectId: string, ruleId: string) =>
     request(`/projects/${projectId}/alert-rules/${ruleId}`, { method: "DELETE" }),
+
+  // --- managed servers (remote agent management) ---
+  listServers: (projectId: string) =>
+    request<{ servers: ManagedServer[] }>(
+      `/projects/${projectId}/servers`
+    ).then((r) => r.servers ?? []),
+  addServer: (projectId: string, name: string, sshTarget: string) =>
+    request<ManagedServer>(`/projects/${projectId}/servers`, {
+      method: "POST",
+      body: JSON.stringify({ name, ssh_target: sshTarget }),
+    }),
+  deleteServer: (projectId: string, serverId: string) =>
+    request(`/projects/${projectId}/servers/${serverId}`, { method: "DELETE" }),
+  serverAction: (projectId: string, serverId: string, action: "install" | "remove" | "status") =>
+    request<ManagedServer>(`/projects/${projectId}/servers/${serverId}/${action}`, {
+      method: "POST",
+    }),
 
   // --- ingest keys (server onboarding) ---
   listIngestKeys: (projectId: string) =>

@@ -53,6 +53,12 @@ services:
       - SEED_DEMO=${SEED_DEMO:-false}
     ports:
       - "8080:8080"
+    # Optional: manage remote agents from the UI over Tailscale SSH. Requires
+    # Tailscale on the host (with --ssh enabled on targets + ACLs). Mount the
+    # host's tailscaled socket so the backend can run `tailscale ssh`.
+    # volumes:
+    #   - /var/run/tailscale:/var/run/tailscale
+    # user: root   # needed to access the host socket
     depends_on:
       postgres:
         condition: service_healthy

@@ -27,6 +27,7 @@ import {
 } from "@/components/ui/primitives";
 import { PageHeader, Spinner, EmptyState, Modal } from "@/components/common";
 import { relativeTime } from "@/lib/utils";
+import { ManagedServers } from "./ManagedServers";
 import type { IngestKey } from "@/types";
 
 // Fallback ingest base for local dev: the backend's OTLP/ingest port on the
@@ -188,6 +189,9 @@ export function ConnectPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* Auto-managed servers (Tailscale SSH) */}
+      <ManagedServers projectId={projectId!} />
 
       {/* Setup instructions */}
       <SetupInstructions

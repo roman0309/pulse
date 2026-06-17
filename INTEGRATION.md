@@ -287,6 +287,23 @@ docker run -d --name pulse-beyla --restart unless-stopped \
 `delta` temporality is important — it makes each export reflect the recent interval, so
 the latency percentiles are current. No code, no redeploy of your app.
 
+## Manage agents from the UI (Tailscale SSH)
+
+Instead of running commands by hand, you can add servers in **Connect → Servers** and
+install/remove the agent with buttons. Pulse connects over **Tailscale SSH** — no
+passwords or keys are stored; access is by tailnet identity.
+
+**Requirements (one-time):**
+- The Pulse host runs Tailscale; the backend container has the host's tailscaled socket
+  mounted (uncomment the `volumes`/`user: root` lines for `backend` in
+  [`deploy/docker-compose.yml`](deploy/docker-compose.yml)).
+- Each target runs `tailscale up --ssh`, and your tailnet ACLs allow SSH from the Pulse
+  node to the targets.
+
+Then: **Connect → Servers → Add server** (`user@tailnet-host`) → **Install**. Pulse mints
+a per-server ingest key, installs the agent over SSH, and shows the result. **Remove**
+stops the agent and revokes its key. No credentials are ever stored in Pulse.
+
 ## Step 3 — Verify it's flowing
 
 ```bash

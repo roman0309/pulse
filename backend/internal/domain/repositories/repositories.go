@@ -50,6 +50,15 @@ type ServiceRepository interface {
 	GetOrCreateByName(ctx context.Context, projectID uuid.UUID, name, env string) (uuid.UUID, error)
 }
 
+// ServerRepository manages remote servers Pulse can manage over Tailscale SSH.
+type ServerRepository interface {
+	Create(ctx context.Context, s *entities.ManagedServer) error
+	ListByProject(ctx context.Context, projectID uuid.UUID) ([]entities.ManagedServer, error)
+	GetByID(ctx context.Context, id uuid.UUID) (*entities.ManagedServer, error)
+	Update(ctx context.Context, s *entities.ManagedServer) error
+	Delete(ctx context.Context, projectID, id uuid.UUID) error
+}
+
 // IngestKeyRepository manages ingestion API keys.
 type IngestKeyRepository interface {
 	ResolveProject(ctx context.Context, keyHash string) (uuid.UUID, error)
