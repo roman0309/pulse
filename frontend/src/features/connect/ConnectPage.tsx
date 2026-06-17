@@ -252,7 +252,7 @@ function Step({
   );
 }
 
-const TABS = ["Host agent", "App (OTel)", "Prometheus"] as const;
+const TABS = ["Host metrics", "App metrics", "Prometheus"] as const;
 type Tab = (typeof TABS)[number];
 
 function SetupInstructions({
@@ -266,11 +266,11 @@ function SetupInstructions({
   agentImage: string;
   highlight: boolean;
 }) {
-  const [tab, setTab] = useState<Tab>("Host agent");
+  const [tab, setTab] = useState<Tab>("Host metrics");
 
   const snippet = useMemo(() => {
     switch (tab) {
-      case "Host agent":
+      case "Host metrics":
         return `docker run -d --name pulse-agent \\
   -e PULSE_ENDPOINT=${endpoint} \\
   -e PULSE_KEY=${token} \\
@@ -278,12 +278,22 @@ function SetupInstructions({
   -e HOST_PROC=/host/proc -e HOST_SYS=/host/sys \\
   -v /proc:/host/proc:ro -v /sys:/host/sys:ro \\
   ${agentImage}`;
-      case "App (OTel)":
-        return `export OTEL_EXPORTER_OTLP_ENDPOINT=${endpoint}/otlp
-export OTEL_EXPORTER_OTLP_HEADERS=X-Pulse-Key=${token}
-export OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
-export OTEL_SERVICE_NAME=payment-api
-# then run your app with its OpenTelemetry SDK enabled`;
+      case "App metrics":
+        return `# Push your app's RED metrics (request rate, errors, latency).
+# Works from any language — POST JSON with your ingest key:
+curl -X POST ${endpoint}/api/v1/ingest/metrics \\
+  -H "X-Pulse-Key: ${token}" \\
+  -H "Content-Type: application/json" \\
+  -d '{"points":[
+    {"service":"my-app","metric":"request_rate","value":58},
+    {"service":"my-app","metric":"error_rate","value":1.2},
+    {"service":"my-app","metric":"latency_p95","value":142}
+  ]}'
+
+# Go service? Drop in a ready reporter (no dependencies):
+#   curl -fsSL https://raw.githubusercontent.com/roman0309/pulse/main/examples/go-instrumentation/pulse.go -o pulse/pulse.go
+#   pulse.Start("${endpoint}", "${token}", "my-app")
+#   http.ListenAndServe(addr, pulse.Middleware(mux))`;
       case "Prometheus":
         return `# prometheus.yml
 remote_write:
