@@ -79,6 +79,35 @@ func (h *IngestHandler) OTLPTraces(c *gin.Context) {
 	c.JSON(http.StatusAccepted, gin.H{"status": "traces accepted (storage pending)"})
 }
 
+// IngestMetricsJSON handles POST /api/v1/ingest/metrics — a simple key-authed
+// JSON push for app instrumentation (no protobuf needed). Body:
+//
+//	{"points":[{"service":"messenger","metric":"latency_p95","value":120}]}
+func (h *IngestHandler) IngestMetricsJSON(c *gin.Context) {
+	var req struct {
+		Points []struct {
+			Service   string  `json:"service" binding:"required"`
+			Metric    string  `json:"metric" binding:"required"`
+			Value     float64 `json:"value"`
+			Timestamp string  `json:"timestamp"`
+		} `json:"points" binding:"required,dive"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		badRequest(c, err)
+		return
+	}
+	raw := make([]ingest.RawMetric, 0, len(req.Points))
+	for _, p := range req.Points {
+		raw = append(raw, ingest.RawMetric{
+			ServiceName: p.Service,
+			MetricName:  p.Metric,
+			Value:       p.Value,
+			Timestamp:   parseTimestamp(p.Timestamp),
+		})
+	}
+	h.writeMetrics(c, raw)
+}
+
 // PromRemoteWrite handles POST /api/v1/prom/write
 func (h *IngestHandler) PromRemoteWrite(c *gin.Context) {
 	body, ok := readBody(c)

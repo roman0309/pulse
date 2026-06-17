@@ -51,6 +51,7 @@ func NewRouter(
 		ingestGroup.POST("/otlp/v1/logs", ingest.OTLPLogs)
 		ingestGroup.POST("/otlp/v1/traces", ingest.OTLPTraces)
 		ingestGroup.POST("/api/v1/prom/write", ingest.PromRemoteWrite)
+		ingestGroup.POST("/api/v1/ingest/metrics", ingest.IngestMetricsJSON)
 	}
 
 	limiter := middleware.NewRateLimiter(50, 100) // 50 rps, burst 100 per IP
