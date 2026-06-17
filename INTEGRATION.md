@@ -263,6 +263,30 @@ For serious fleets, call `install-agent.sh` from your existing tooling — an An
 task, a cloud-init `runcmd`, or a Kubernetes DaemonSet — rather than the SSH loop.
 The installer is the stable primitive; the orchestration is yours to choose.
 
+## Zero-code app metrics (eBPF / Beyla)
+
+Get application RED metrics (request rate, errors, latency percentiles) **without
+changing your app's code**, in any language. [Grafana Beyla](https://github.com/grafana/beyla)
+attaches to the running process via eBPF and exports OTLP; Pulse decodes the duration
+histogram into `latency_p50/p95/p99`, `request_count` and `error_rate`.
+
+Run it on the same host as your app (the exact command, with key + endpoint filled in,
+is on the project's **Connect → App (zero-code)** tab):
+
+```bash
+docker run -d --name pulse-beyla --restart unless-stopped \
+  --privileged --pid=host \
+  -e BEYLA_OPEN_PORT=8080 \                 # your app's listen port
+  -e OTEL_SERVICE_NAME=messenger \
+  -e OTEL_EXPORTER_OTLP_ENDPOINT=https://pulse.your-tailnet.ts.net/otlp \
+  -e OTEL_EXPORTER_OTLP_HEADERS=X-Pulse-Key=YOUR_PROJECT_KEY \
+  -e OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE=delta \
+  grafana/beyla:latest
+```
+
+`delta` temporality is important — it makes each export reflect the recent interval, so
+the latency percentiles are current. No code, no redeploy of your app.
+
 ## Step 3 — Verify it's flowing
 
 ```bash

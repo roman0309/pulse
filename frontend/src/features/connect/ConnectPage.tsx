@@ -252,7 +252,7 @@ function Step({
   );
 }
 
-const TABS = ["Host metrics", "App metrics", "Prometheus"] as const;
+const TABS = ["Host metrics", "App metrics", "App (zero-code)", "Prometheus"] as const;
 type Tab = (typeof TABS)[number];
 
 function SetupInstructions({
@@ -294,6 +294,17 @@ curl -X POST ${endpoint}/api/v1/ingest/metrics \\
 #   curl -fsSL https://raw.githubusercontent.com/roman0309/pulse/main/examples/go-instrumentation/pulse.go -o pulse/pulse.go
 #   pulse.Start("${endpoint}", "${token}", "my-app")
 #   http.ListenAndServe(addr, pulse.Middleware(mux))`;
+      case "App (zero-code)":
+        return `# Zero-code app metrics via eBPF (Grafana Beyla) — no code changes.
+# Run on the same host as your app. Set BEYLA_OPEN_PORT to the app's listen port.
+docker run -d --name pulse-beyla --restart unless-stopped \\
+  --privileged --pid=host \\
+  -e BEYLA_OPEN_PORT=8080 \\
+  -e OTEL_SERVICE_NAME=my-app \\
+  -e OTEL_EXPORTER_OTLP_ENDPOINT=${endpoint}/otlp \\
+  -e OTEL_EXPORTER_OTLP_HEADERS=X-Pulse-Key=${token} \\
+  -e OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE=delta \\
+  grafana/beyla:latest`;
       case "Prometheus":
         return `# prometheus.yml
 remote_write:
