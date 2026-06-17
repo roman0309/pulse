@@ -33,6 +33,13 @@ func (r *LogRepo) Insert(ctx context.Context, logs []entities.LogEntry) error {
 	return batch.Send()
 }
 
+// DeleteService removes all logs for a service (ClickHouse lightweight delete).
+func (r *LogRepo) DeleteService(ctx context.Context, projectID, serviceID string) error {
+	return r.conn.Exec(ctx,
+		`DELETE FROM metrics_db.logs WHERE project_id = ? AND service_id = ?`,
+		projectID, serviceID)
+}
+
 // Query returns logs filtered by service, level and a full-text search term,
 // newest first, with pagination via limit/offset.
 func (r *LogRepo) Query(ctx context.Context, projectID, serviceID, level, search string, from, to time.Time, limit, offset int) ([]entities.LogEntry, error) {

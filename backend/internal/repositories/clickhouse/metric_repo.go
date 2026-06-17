@@ -104,6 +104,13 @@ func (r *MetricRepo) EvalValue(ctx context.Context, projectID, serviceID, metric
 	return avg, true, nil
 }
 
+// DeleteService removes all metrics for a service (ClickHouse lightweight delete).
+func (r *MetricRepo) DeleteService(ctx context.Context, projectID, serviceID string) error {
+	return r.conn.Exec(ctx,
+		`DELETE FROM metrics_db.metrics WHERE project_id = ? AND service_id = ?`,
+		projectID, serviceID)
+}
+
 func (r *MetricRepo) Latest(ctx context.Context, projectID, serviceID, metricName string) (float64, error) {
 	query := fmt.Sprintf(`
 		SELECT value FROM metrics_db.metrics

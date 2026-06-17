@@ -88,6 +88,8 @@ type MetricRepository interface {
 	// EvalValue returns the average value of a metric over [since, now] for the
 	// alerting engine. ok is false when there are no data points in the window.
 	EvalValue(ctx context.Context, projectID, serviceID, metricName string, since time.Time) (value float64, ok bool, err error)
+	// DeleteService purges all metrics for one service.
+	DeleteService(ctx context.Context, projectID, serviceID string) error
 }
 
 // AlertRuleRepository manages alert rule definitions and their evaluator state.
@@ -104,4 +106,6 @@ type AlertRuleRepository interface {
 type LogRepository interface {
 	Insert(ctx context.Context, logs []entities.LogEntry) error
 	Query(ctx context.Context, projectID string, serviceID, level, search string, from, to time.Time, limit, offset int) ([]entities.LogEntry, error)
+	// DeleteService purges all logs for one service.
+	DeleteService(ctx context.Context, projectID, serviceID string) error
 }

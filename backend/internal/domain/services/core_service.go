@@ -160,7 +160,14 @@ func (s *CoreService) DeleteService(ctx context.Context, userID, serviceID uuid.
 	if _, err := s.requireProjectAccess(ctx, userID, svc.ProjectID); err != nil {
 		return err
 	}
-	return s.Services.Delete(ctx, serviceID)
+	if err := s.Services.Delete(ctx, serviceID); err != nil {
+		return err
+	}
+	// Purge the service's time-series data too (best-effort).
+	pid := svc.ProjectID.String()
+	_ = s.Metrics.DeleteService(ctx, pid, serviceID.String())
+	_ = s.Logs.DeleteService(ctx, pid, serviceID.String())
+	return nil
 }
 
 // ---------- Deployments ----------
