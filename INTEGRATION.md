@@ -164,6 +164,51 @@ service.
 
 ---
 
+## Private networking with Tailscale (no domain, no public ports)
+
+The cleanest way to connect agents on other servers to Pulse without a domain or
+exposing anything to the internet. Pulse joins your private Tailscale network and is
+reachable at `https://<host>.<your-tailnet>.ts.net` with **automatic HTTPS**.
+
+**One-time tailnet setup** (in the [Tailscale admin](https://login.tailscale.com/admin)):
+enable **MagicDNS** and **HTTPS certificates**, then create a reusable
+[auth key](https://login.tailscale.com/admin/settings/keys).
+
+**On the Pulse server** — set these in `deploy/.env`:
+
+```ini
+TS_AUTHKEY=tskey-auth-xxxxxxxx
+TS_HOSTNAME=pulse
+PUBLIC_INGEST_URL=https://pulse.your-tailnet.ts.net
+CORS_ORIGINS=https://pulse.your-tailnet.ts.net
+```
+
+Start with the tailscale profile (no need to publish ports 80/8080 — you can firewall
+them off entirely):
+
+```bash
+docker compose --profile tailscale up -d
+```
+
+Pulse is now at **`https://pulse.your-tailnet.ts.net`** for anyone on your tailnet.
+
+**On each agent / app server** — join the tailnet, then point the agent at the private URL:
+
+```bash
+curl -fsSL https://tailscale.com/install.sh | sh && sudo tailscale up
+
+docker run -d --name pulse-agent --restart unless-stopped \
+  -e PULSE_ENDPOINT=https://pulse.your-tailnet.ts.net \
+  -e PULSE_KEY=YOUR_PROJECT_KEY \
+  -e PULSE_SERVICE=payment-api \
+  -e HOST_PROC=/host/proc -e HOST_SYS=/host/sys \
+  -v /proc:/host/proc:ro -v /sys:/host/sys:ro \
+  ghcr.io/roman0309/pulse-agent:latest
+```
+
+No domains, no open ports, traffic encrypted by WireGuard. View the UI from any device
+on your tailnet at the same URL.
+
 ## Step 3 — Verify it's flowing
 
 ```bash
