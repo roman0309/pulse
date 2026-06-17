@@ -38,7 +38,11 @@ export function ConnectPage() {
   const { projectId } = useParams();
   const qc = useQueryClient();
   const [createOpen, setCreateOpen] = useState(false);
+  // `created` keeps the just-created key (with its one-time token) for the rest
+  // of the session so the setup command stays filled in. `showToken` only
+  // controls the show-once modal — closing it does NOT clear the filled command.
   const [created, setCreated] = useState<IngestKey | null>(null);
+  const [showToken, setShowToken] = useState(false);
 
   const keys = useQuery({
     queryKey: ["ingest-keys", projectId],
@@ -200,19 +204,21 @@ export function ConnectPage() {
         onClose={() => setCreateOpen(false)}
         onCreated={(key) => {
           setCreated(key);
+          setShowToken(true);
           setCreateOpen(false);
           qc.invalidateQueries({ queryKey: ["ingest-keys", projectId] });
         }}
       />
 
-      {/* Show-once token modal */}
-      <Modal open={!!created} onClose={() => setCreated(null)} title="Copy your ingest key">
+      {/* Show-once token modal — closing it leaves the command below filled in */}
+      <Modal open={showToken} onClose={() => setShowToken(false)} title="Copy your ingest key">
         <p className="text-sm text-fg-muted mb-3">
-          This is the only time the full key is shown. Store it somewhere safe.
+          This is the only time the full key is shown. The setup command below stays
+          filled in with it until you leave this page.
         </p>
         {created?.token && <CopyBox value={created.token} />}
         <div className="flex justify-end mt-4">
-          <Button size="sm" onClick={() => setCreated(null)}>
+          <Button size="sm" onClick={() => setShowToken(false)}>
             Done
           </Button>
         </div>
