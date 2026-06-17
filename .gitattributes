@@ -1,0 +1,2 @@
+# Keep shell scripts LF so `curl | sh` works regardless of the OS they were committed from.
+*.sh text eol=lf
