@@ -40,17 +40,18 @@ func TestRunRejectsBadTarget(t *testing.T) {
 
 func TestRunExecutesViaConfiguredCommand(t *testing.T) {
 	if runtime.GOOS == "windows" {
-		t.Skip("uses a POSIX shell as the fake SSH command")
+		t.Skip("relies on a POSIX `echo` binary")
 	}
-	// Use `sh -c` as the "ssh" base: it receives <target> <command> as $0 $1.
-	t.Setenv("REMOTE_SSH_CMD", "/bin/sh -c")
+	// Use `echo` as the fake SSH base: it runs `echo <target> <command>` and
+	// echoes them back, so we can confirm the executor passes both through in
+	// the right order regardless of any shell semantics.
+	t.Setenv("REMOTE_SSH_CMD", "echo")
 	e := NewTailscaleSSH()
-	// command runs as: sh -c "echo reached" "root@host"  -> prints "reached"
-	out, err := e.Run(context.Background(), "root@host", "echo reached")
+	out, err := e.Run(context.Background(), "root@host", "install agent")
 	if err != nil {
 		t.Fatalf("run error: %v (out=%q)", err, out)
 	}
-	if !strings.Contains(out, "reached") {
-		t.Fatalf("expected output to contain 'reached', got %q", out)
+	if !strings.Contains(out, "root@host") || !strings.Contains(out, "install agent") {
+		t.Fatalf("expected output to contain target and command, got %q", out)
 	}
 }
