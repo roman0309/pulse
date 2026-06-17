@@ -1,8 +1,8 @@
-name: Release agent
+name: Release
 
-# Publishes the Pulse host agent on every version tag:
-#   - a multi-arch Docker image to GHCR (ghcr.io/<owner>/pulse-agent)
-#   - standalone binaries attached to the GitHub Release
+# Publishes Pulse on every version tag:
+#   - multi-arch Docker images to GHCR: pulse-backend, pulse-frontend, pulse-agent
+#   - standalone agent binaries attached to the GitHub Release
 #
 # Trigger it by pushing a tag, e.g.:  git tag v0.1.0 && git push origin v0.1.0
 
@@ -16,8 +16,14 @@ permissions:
   packages: write   # push to GHCR
 
 jobs:
-  image:
+  images:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - { name: pulse-backend,  context: ./backend,  file: ./backend/Dockerfile }
+          - { name: pulse-frontend, context: ./frontend, file: ./frontend/Dockerfile }
+          - { name: pulse-agent,    context: ./backend,  file: ./backend/Dockerfile.agent }
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-qemu-action@v3
@@ -30,15 +36,15 @@ jobs:
       - id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/${{ github.repository_owner }}/pulse-agent
+          images: ghcr.io/${{ github.repository_owner }}/${{ matrix.name }}
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=raw,value=latest
       - uses: docker/build-push-action@v6
         with:
-          context: ./backend
-          file: ./backend/Dockerfile.agent
+          context: ${{ matrix.context }}
+          file: ${{ matrix.file }}
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.meta.outputs.tags }}

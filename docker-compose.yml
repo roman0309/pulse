@@ -9,7 +9,6 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./backend/migrations/postgres:/docker-entrypoint-initdb.d
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U metrics"]
       interval: 5s
@@ -27,7 +26,6 @@ services:
       - "9000:9000"
     volumes:
       - clickhouse_data:/var/lib/clickhouse
-      - ./backend/migrations/clickhouse:/docker-entrypoint-initdb.d
     healthcheck:
       test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:8123/ping"]
       interval: 5s
@@ -58,6 +56,7 @@ services:
       - JWT_SECRET=${JWT_SECRET:-super_secret_jwt_key_change_in_production}
       - JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET:-super_secret_refresh_key_change_in_production}
       - CORS_ORIGINS=http://localhost:3000
+      - SEED_DEMO=true
       # Externally reachable URL remote agents push to. In production set this to
       # your public Pulse address, e.g. https://pulse.example.com
       - PUBLIC_INGEST_URL=${PUBLIC_INGEST_URL:-http://localhost:8080}

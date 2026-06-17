@@ -24,6 +24,8 @@ type Config struct {
 	// AgentImage is the published Docker image for the host agent, shown in the
 	// Connect page's run command (e.g. ghcr.io/acme/pulse-agent:latest).
 	AgentImage string
+	// SeedDemo loads demo data (user, project, fake metrics) on first migration.
+	SeedDemo bool
 }
 
 // Load reads configuration from the environment, applying sensible defaults
@@ -40,6 +42,7 @@ func Load() *Config {
 		CORSOrigins:      strings.Split(getEnv("CORS_ORIGINS", "http://localhost:3000,http://localhost:5173"), ","),
 		PublicIngestURL:  getEnv("PUBLIC_INGEST_URL", ""),
 		AgentImage:       getEnv("AGENT_IMAGE", "ghcr.io/roman0309/pulse-agent:latest"),
+		SeedDemo:         getEnv("SEED_DEMO", "false") == "true",
 	}
 }
 

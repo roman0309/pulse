@@ -34,11 +34,4 @@ CREATE INDEX IF NOT EXISTS idx_alert_rules_enabled ON alert_rules(enabled);
 
 CREATE TRIGGER trg_alert_rules_updated BEFORE UPDATE ON alert_rules
     FOR EACH ROW EXECUTE FUNCTION set_updated_at();
-
--- Example rule (fires on the live demo traffic): elevated error rate.
-INSERT INTO alert_rules (project_id, name, metric, operator, threshold, for_seconds, severity, type)
-VALUES (
-    '33333333-3333-3333-3333-333333333333',
-    'Elevated error rate',
-    'error_rate', 'gt', 1, 0, 'high', 'high_error_rate'
-) ON CONFLICT DO NOTHING;
+-- (demo rule is seeded separately in 006_seed_extras.sql, gated behind SEED_DEMO)

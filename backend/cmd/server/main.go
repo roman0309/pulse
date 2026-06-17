@@ -14,6 +14,7 @@ import (
 	"github.com/acme/observability/internal/config"
 	"github.com/acme/observability/internal/domain/services"
 	"github.com/acme/observability/internal/handlers"
+	"github.com/acme/observability/internal/migrate"
 	chrepo "github.com/acme/observability/internal/repositories/clickhouse"
 	pgrepo "github.com/acme/observability/internal/repositories/postgres"
 	"github.com/acme/observability/internal/ws"
@@ -43,6 +44,17 @@ func main() {
 	}
 	defer ch.Close()
 	log.Info("connected to clickhouse")
+
+	// --- Schema migrations (self-applied, idempotent) ---
+	if err := migrate.Postgres(ctx, pg, cfg.SeedDemo, log); err != nil {
+		log.Error("postgres migrate failed", "err", err)
+		os.Exit(1)
+	}
+	if err := migrate.ClickHouse(ctx, ch, cfg.SeedDemo, log); err != nil {
+		log.Error("clickhouse migrate failed", "err", err)
+		os.Exit(1)
+	}
+	log.Info("migrations applied", "seed_demo", cfg.SeedDemo)
 
 	// --- Repositories ---
 	userRepo := pgrepo.NewUserRepo(pg)

@@ -12,11 +12,4 @@ CREATE TABLE IF NOT EXISTS ingest_keys (
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_ingest_keys_project ON ingest_keys(project_id);
-
--- Demo key for the seeded project. Plaintext: pulse_demo_ingest_key
-INSERT INTO ingest_keys (project_id, name, key_hash)
-VALUES (
-    '33333333-3333-3333-3333-333333333333',
-    'demo',
-    encode(digest('pulse_demo_ingest_key', 'sha256'), 'hex')
-) ON CONFLICT (key_hash) DO NOTHING;
+-- (demo key is seeded separately in 006_seed_extras.sql, gated behind SEED_DEMO)

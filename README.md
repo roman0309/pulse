@@ -93,13 +93,28 @@ frontend/src/
 
 ---
 
-## 🚀 Quick Start (Docker)
+## 🚀 Install (one command)
 
-Everything runs with one command:
+Self-host Pulse on any machine with Docker — uses published images, generates
+secrets, and starts everything. The backend **migrates the databases itself** on
+first boot; no manual steps.
 
 ```bash
-cp .env.example .env        # optional — sensible defaults are baked in
-docker compose up --build
+curl -fsSL https://raw.githubusercontent.com/roman0309/pulse/main/deploy/install.sh | sh
+```
+
+Then open **http://localhost** and register the first user (becomes the owner).
+To customize, edit the generated `pulse/.env` (see [`deploy/.env.example`](deploy/.env.example))
+and `docker compose up -d` again. Production guidance: [DEPLOYMENT.md](DEPLOYMENT.md).
+
+---
+
+## 🛠 Run from source (development)
+
+For hacking on Pulse — builds from source and seeds live demo data:
+
+```bash
+docker compose up --build        # SEED_DEMO=true, includes a demo agent + sample app
 ```
 
 Then open:
