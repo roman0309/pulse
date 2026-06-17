@@ -1,5 +1,10 @@
 # Pulse — Developer-First Observability Platform
 
+[![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](LICENSE)
+[![CI](https://github.com/roman0309/pulse/actions/workflows/ci.yml/badge.svg)](https://github.com/roman0309/pulse/actions/workflows/ci.yml)
+[![Go 1.24](https://img.shields.io/badge/Go-1.24-00ADD8.svg)](https://go.dev)
+[![React 19](https://img.shields.io/badge/React-19-61DAFB.svg)](https://react.dev)
+
 Pulse is a modern observability MVP focused on **incident investigation**, not dashboard building.
 Every screen answers one question: **"What changed and why is my system behaving differently?"**
 
@@ -283,3 +288,17 @@ managed databases, observability of the platform itself).
 cd backend  && go build ./... && go vet ./...
 cd frontend && npm run build
 ```
+
+---
+
+## 🤝 Contributing
+
+Contributions are welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for the dev setup
+and workflow, and our [Code of Conduct](CODE_OF_CONDUCT.md). Found a security issue?
+Please follow [SECURITY.md](SECURITY.md) and report it privately.
+
+## 📄 License
+
+Pulse is open source under the **[GNU AGPL-3.0](LICENSE)**. You can self-host, modify,
+and run it freely; if you offer it as a network service, your modifications must be
+made available under the same license. Copyright © 2026 Pulse contributors.
