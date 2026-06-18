@@ -22,6 +22,7 @@ import (
 	"github.com/acme/observability/internal/ws"
 	"github.com/acme/observability/pkg/logger"
 	"github.com/acme/observability/pkg/notify"
+	"github.com/acme/observability/pkg/secrets"
 )
 
 func main() {
@@ -93,7 +94,8 @@ func main() {
 		Servers:         serverRepo,
 		Analyzer:        analyzer.NewDeterministic(),
 		Hub:             hub,
-		Exec:            remote.NewTailscaleSSH(),
+		Exec:            remote.NewSSH(),
+		Secrets:         secrets.New(cfg.CredentialsKey),
 		PublicIngestURL: cfg.PublicIngestURL,
 	}
 

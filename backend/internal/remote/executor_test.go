@@ -2,56 +2,29 @@ package remote
 
 import (
 	"context"
-	"runtime"
-	"strings"
 	"testing"
+	"time"
 )
 
-func TestValidateTarget(t *testing.T) {
-	ok := []string{"root@host", "ubuntu@web-1", "deploy@pulse.tailnet.ts.net", "u_1@10.0.0.1"}
-	for _, s := range ok {
-		if !ValidateTarget(s) {
-			t.Errorf("expected valid: %q", s)
-		}
+func TestRunRejectsIncompleteConn(t *testing.T) {
+	e := NewSSH()
+	cases := []Conn{
+		{},                                  // nothing
+		{Host: "h"},                         // no user
+		{Host: "h", User: "u"},              // no credentials
 	}
-	bad := []string{
-		"root@host; rm -rf /", // injection
-		"root@host && curl evil",
-		"root@host`whoami`",
-		"$(reboot)@host",
-		"roothost", // no @
-		"root@",
-		"@host",
-		"root@host space",
-	}
-	for _, s := range bad {
-		if ValidateTarget(s) {
-			t.Errorf("expected invalid: %q", s)
+	for _, c := range cases {
+		if _, err := e.Run(context.Background(), c, "echo hi"); err != ErrBadConn {
+			t.Errorf("conn %+v: expected ErrBadConn, got %v", c, err)
 		}
 	}
 }
 
-func TestRunRejectsBadTarget(t *testing.T) {
-	e := NewTailscaleSSH()
-	if _, err := e.Run(context.Background(), "evil; rm -rf /", "echo hi"); err != ErrBadTarget {
-		t.Fatalf("expected ErrBadTarget, got %v", err)
-	}
-}
-
-func TestRunExecutesViaConfiguredCommand(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("relies on a POSIX `echo` binary")
-	}
-	// Use `echo` as the fake SSH base: it runs `echo <target> <command>` and
-	// echoes them back, so we can confirm the executor passes both through in
-	// the right order regardless of any shell semantics.
-	t.Setenv("REMOTE_SSH_CMD", "echo")
-	e := NewTailscaleSSH()
-	out, err := e.Run(context.Background(), "root@host", "install agent")
-	if err != nil {
-		t.Fatalf("run error: %v (out=%q)", err, out)
-	}
-	if !strings.Contains(out, "root@host") || !strings.Contains(out, "install agent") {
-		t.Fatalf("expected output to contain target and command, got %q", out)
+func TestRunUnreachableHostErrors(t *testing.T) {
+	e := &SSHExecutor{DialTimeout: 500 * time.Millisecond}
+	// RFC 5737 TEST-NET-1, not routable -> dial fails (not ErrBadConn).
+	_, err := e.Run(context.Background(), Conn{Host: "192.0.2.1", User: "u", Password: "p"}, "echo hi")
+	if err == nil || err == ErrBadConn {
+		t.Fatalf("expected a dial error, got %v", err)
 	}
 }

@@ -462,19 +462,45 @@ func (h *CoreHandler) AddServer(c *gin.Context) {
 		return
 	}
 	var req struct {
-		Name      string `json:"name" binding:"max=100"`
-		SSHTarget string `json:"ssh_target" binding:"required,max=200"`
+		Name       string `json:"name" binding:"max=100"`
+		Host       string `json:"host" binding:"required,max=255"`
+		Port       int    `json:"port" binding:"omitempty,min=1,max=65535"`
+		User       string `json:"user" binding:"required,max=64"`
+		AuthMethod string `json:"auth_method" binding:"omitempty,oneof=password key"`
+		Secret     string `json:"secret" binding:"required"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		badRequest(c, err)
 		return
 	}
-	srv, err := h.core.AddServer(c.Request.Context(), middleware.UserID(c), projectID, req.Name, req.SSHTarget)
+	srv, err := h.core.AddServer(c.Request.Context(), middleware.UserID(c), projectID,
+		req.Name, req.Host, req.Port, req.User, req.AuthMethod, req.Secret)
 	if err != nil {
 		handleDomainError(c, err)
 		return
 	}
 	c.JSON(http.StatusCreated, srv)
+}
+
+// RunServerCommand runs an arbitrary command on a server over SSH.
+func (h *CoreHandler) RunServerCommand(c *gin.Context) {
+	serverID, ok := parseUUIDParam(c, "serverId")
+	if !ok {
+		return
+	}
+	var req struct {
+		Command string `json:"command" binding:"required,max=4000"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		badRequest(c, err)
+		return
+	}
+	srv, err := h.core.RunCommand(c.Request.Context(), middleware.UserID(c), serverID, req.Command)
+	if err != nil {
+		handleDomainError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, srv)
 }
 
 func (h *CoreHandler) DeleteServer(c *gin.Context) {

@@ -286,16 +286,24 @@ export const api = {
     request<{ servers: ManagedServer[] }>(
       `/projects/${projectId}/servers`
     ).then((r) => r.servers ?? []),
-  addServer: (projectId: string, name: string, sshTarget: string) =>
+  addServer: (
+    projectId: string,
+    body: { name: string; host: string; port: number; user: string; auth_method: string; secret: string }
+  ) =>
     request<ManagedServer>(`/projects/${projectId}/servers`, {
       method: "POST",
-      body: JSON.stringify({ name, ssh_target: sshTarget }),
+      body: JSON.stringify(body),
     }),
   deleteServer: (projectId: string, serverId: string) =>
     request(`/projects/${projectId}/servers/${serverId}`, { method: "DELETE" }),
   serverAction: (projectId: string, serverId: string, action: "install" | "remove" | "status") =>
     request<ManagedServer>(`/projects/${projectId}/servers/${serverId}/${action}`, {
       method: "POST",
+    }),
+  runServerCommand: (projectId: string, serverId: string, command: string) =>
+    request<ManagedServer>(`/projects/${projectId}/servers/${serverId}/run`, {
+      method: "POST",
+      body: JSON.stringify({ command }),
     }),
 
   // --- agent control channel (live, outbound WS) ---

@@ -301,22 +301,22 @@ This requires the agent to have the host docker socket mounted (the installer an
 Connect command already include `-v /var/run/docker.sock:/var/run/docker.sock`). Commands
 run on the agent's own host; nothing is stored in Pulse and Pulse never connects inward.
 
-## Manage agents from the UI (Tailscale SSH — alternative)
+## Manage servers from the UI (SSH — alternative)
 
-Instead of running commands by hand, you can add servers in **Connect → Servers** and
-install/remove the agent with buttons. Pulse connects over **Tailscale SSH** — no
-passwords or keys are stored; access is by tailnet identity.
+Add servers in **Connect → Servers** with SSH credentials, then **Install** the agent,
+check **Status**, **Remove** it, or **run any command** — all from the UI. Pulse connects
+over SSH from its own host.
 
-**Requirements (one-time):**
-- The Pulse host runs Tailscale; the backend container has the host's tailscaled socket
-  mounted (uncomment the `volumes`/`user: root` lines for `backend` in
-  [`deploy/docker-compose.yml`](deploy/docker-compose.yml)).
-- Each target runs `tailscale up --ssh`, and your tailnet ACLs allow SSH from the Pulse
-  node to the targets.
+- **Add server**: host, port, user, and either a password or a private key.
+- Credentials are **encrypted at rest** (AES-256-GCM, key from `CREDENTIALS_KEY`, or
+  `JWT_SECRET` by default) — never returned by the API.
+- **Install** mints a per-server ingest key and runs the agent installer over SSH.
+- The command box runs arbitrary commands on the server and shows the output.
 
-Then: **Connect → Servers → Add server** (`user@tailnet-host`) → **Install**. Pulse mints
-a per-server ingest key, installs the agent over SSH, and shows the result. **Remove**
-stops the agent and revokes its key. No credentials are ever stored in Pulse.
+> **Security:** this makes the Pulse host able to SSH into your servers — keep its
+> credentials safe and its access scoped. Host keys are currently trusted on connect;
+> prefer running this over a trusted/VPN network. The control-channel approach above
+> avoids storing credentials and is recommended where possible.
 
 ## Step 3 — Verify it's flowing
 

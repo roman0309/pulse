@@ -16,6 +16,7 @@ import (
 	"github.com/acme/observability/internal/remote"
 	"github.com/acme/observability/internal/ws"
 	"github.com/acme/observability/pkg/hash"
+	"github.com/acme/observability/pkg/secrets"
 	"github.com/google/uuid"
 )
 
@@ -38,13 +39,14 @@ type CoreService struct {
 	Analyzer    analyzer.Analyzer
 	Hub         *ws.Hub
 	Exec        remote.Executor
+	Secrets     *secrets.Box
 	// PublicIngestURL is the address agents push to; injected into remote installs.
 	PublicIngestURL string
 }
 
 const agentInstallerURL = "https://raw.githubusercontent.com/roman0309/pulse/main/deploy/install-agent.sh"
 
-// ---------- Managed servers (remote agent management over Tailscale SSH) ----------
+// ---------- Managed servers (remote agent management over SSH) ----------
 
 func (s *CoreService) ListServers(ctx context.Context, userID, projectID uuid.UUID) ([]entities.ManagedServer, error) {
 	if _, err := s.requireProjectAccess(ctx, userID, projectID); err != nil {
@@ -53,18 +55,72 @@ func (s *CoreService) ListServers(ctx context.Context, userID, projectID uuid.UU
 	return s.Servers.ListByProject(ctx, projectID)
 }
 
-func (s *CoreService) AddServer(ctx context.Context, userID, projectID uuid.UUID, name, sshTarget string) (*entities.ManagedServer, error) {
+// AddServer stores a server with SSH credentials (the secret is encrypted at rest).
+func (s *CoreService) AddServer(ctx context.Context, userID, projectID uuid.UUID, name, host string, port int, user, authMethod, secret string) (*entities.ManagedServer, error) {
 	if _, err := s.requireProjectAccess(ctx, userID, projectID); err != nil {
 		return nil, err
 	}
-	if !remote.ValidateTarget(sshTarget) {
-		return nil, remote.ErrBadTarget
+	if host == "" || user == "" || secret == "" {
+		return nil, remote.ErrBadConn
+	}
+	if port == 0 {
+		port = 22
+	}
+	if authMethod != "key" {
+		authMethod = "password"
+	}
+	enc, err := s.Secrets.Encrypt(secret)
+	if err != nil {
+		return nil, err
 	}
 	if name == "" {
-		name = sshTarget
+		name = host
 	}
-	srv := &entities.ManagedServer{ProjectID: projectID, Name: name, SSHTarget: sshTarget, Status: "pending"}
+	srv := &entities.ManagedServer{
+		ProjectID:  projectID,
+		Name:       name,
+		SSHTarget:  user + "@" + host,
+		SSHHost:    host,
+		SSHPort:    port,
+		SSHUser:    user,
+		AuthMethod: authMethod,
+		SecretEnc:  enc,
+		Status:     "pending",
+	}
 	return srv, s.Servers.Create(ctx, srv)
+}
+
+func (s *CoreService) connFor(srv *entities.ManagedServer) (remote.Conn, error) {
+	secret, err := s.Secrets.Decrypt(srv.SecretEnc)
+	if err != nil {
+		return remote.Conn{}, err
+	}
+	c := remote.Conn{Host: srv.SSHHost, Port: srv.SSHPort, User: srv.SSHUser}
+	if srv.AuthMethod == "key" {
+		c.PrivateKey = secret
+	} else {
+		c.Password = secret
+	}
+	return c, nil
+}
+
+// RunCommand runs an arbitrary command on the server over SSH and returns output.
+func (s *CoreService) RunCommand(ctx context.Context, userID, serverID uuid.UUID, command string) (*entities.ManagedServer, error) {
+	srv, err := s.serverForUser(ctx, userID, serverID)
+	if err != nil {
+		return nil, err
+	}
+	conn, err := s.connFor(srv)
+	if err != nil {
+		return nil, err
+	}
+	out, runErr := s.Exec.Run(ctx, conn, command)
+	srv.LastResult = truncate(out, 4000)
+	if runErr != nil {
+		srv.LastResult = truncate(out+"\n"+runErr.Error(), 4000)
+	}
+	_ = s.Servers.Update(ctx, srv)
+	return srv, nil
 }
 
 func (s *CoreService) DeleteServer(ctx context.Context, userID, projectID, serverID uuid.UUID) error {
@@ -88,6 +144,10 @@ func (s *CoreService) InstallAgent(ctx context.Context, userID, serverID uuid.UU
 	if err != nil {
 		return nil, err
 	}
+	conn, err := s.connFor(srv)
+	if err != nil {
+		return nil, err
+	}
 	key, err := s.CreateIngestKey(ctx, userID, srv.ProjectID, srv.Name)
 	if err != nil {
 		return nil, err
@@ -98,7 +158,7 @@ func (s *CoreService) InstallAgent(ctx context.Context, userID, serverID uuid.UU
 	}
 	cmd := fmt.Sprintf("curl -fsSL %s | PULSE_ENDPOINT=%s PULSE_KEY=%s PULSE_SERVICE=%s sh",
 		agentInstallerURL, endpoint, key.Token, srv.Name)
-	out, runErr := s.Exec.Run(ctx, srv.SSHTarget, cmd)
+	out, runErr := s.Exec.Run(ctx, conn, cmd)
 
 	srv.IngestKeyID = &key.ID
 	srv.LastResult = truncate(out, 2000)
@@ -118,7 +178,11 @@ func (s *CoreService) RemoveAgent(ctx context.Context, userID, serverID uuid.UUI
 	if err != nil {
 		return nil, err
 	}
-	out, runErr := s.Exec.Run(ctx, srv.SSHTarget, "docker rm -f pulse-agent pulse-beyla 2>/dev/null; echo removed")
+	conn, err := s.connFor(srv)
+	if err != nil {
+		return nil, err
+	}
+	out, runErr := s.Exec.Run(ctx, conn, "docker rm -f pulse-agent pulse-beyla 2>/dev/null; echo removed")
 	if srv.IngestKeyID != nil {
 		_ = s.IngestKeys.Delete(ctx, srv.ProjectID, *srv.IngestKeyID)
 		srv.IngestKeyID = nil
@@ -139,7 +203,11 @@ func (s *CoreService) CheckStatus(ctx context.Context, userID, serverID uuid.UUI
 	if err != nil {
 		return nil, err
 	}
-	out, runErr := s.Exec.Run(ctx, srv.SSHTarget,
+	conn, err := s.connFor(srv)
+	if err != nil {
+		return nil, err
+	}
+	out, runErr := s.Exec.Run(ctx, conn,
 		"docker ps --filter name=pulse-agent --filter name=pulse-beyla --format '{{.Names}} {{.Status}}'")
 	srv.LastResult = truncate(out, 2000)
 	if runErr != nil {

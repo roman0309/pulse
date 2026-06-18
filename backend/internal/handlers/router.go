@@ -116,6 +116,7 @@ func NewRouter(
 			p.POST("/servers/:serverId/install", core.InstallAgent)
 			p.POST("/servers/:serverId/remove", core.RemoveAgent)
 			p.POST("/servers/:serverId/status", core.ServerStatus)
+			p.POST("/servers/:serverId/run", core.RunServerCommand)
 
 			// agent control channel (live agents + commands)
 			p.GET("/agents", core.ListAgents)

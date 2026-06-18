@@ -73,7 +73,12 @@ type ManagedServer struct {
 	ID          uuid.UUID  `json:"id"`
 	ProjectID   uuid.UUID  `json:"project_id"`
 	Name        string     `json:"name"`
-	SSHTarget   string     `json:"ssh_target"`
+	SSHTarget   string     `json:"ssh_target"` // user@host, for display
+	SSHHost     string     `json:"ssh_host"`
+	SSHPort     int        `json:"ssh_port"`
+	SSHUser     string     `json:"ssh_user"`
+	AuthMethod  string     `json:"auth_method"` // password | key
+	SecretEnc   string     `json:"-"`           // encrypted credential, never serialized
 	Status      string     `json:"status"`
 	LastResult  string     `json:"last_result"`
 	IngestKeyID *uuid.UUID `json:"-"`

@@ -26,6 +26,8 @@ type Config struct {
 	AgentImage string
 	// SeedDemo loads demo data (user, project, fake metrics) on first migration.
 	SeedDemo bool
+	// CredentialsKey encrypts stored SSH credentials at rest. Defaults to JWT_SECRET.
+	CredentialsKey string
 }
 
 // Load reads configuration from the environment, applying sensible defaults
@@ -43,6 +45,7 @@ func Load() *Config {
 		PublicIngestURL:  getEnv("PUBLIC_INGEST_URL", ""),
 		AgentImage:       getEnv("AGENT_IMAGE", "ghcr.io/roman0309/pulse-agent:latest"),
 		SeedDemo:         getEnv("SEED_DEMO", "false") == "true",
+		CredentialsKey:   getEnv("CREDENTIALS_KEY", getEnv("JWT_SECRET", "super_secret_jwt_key_change_in_production")),
 	}
 }
 

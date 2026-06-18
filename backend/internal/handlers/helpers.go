@@ -28,7 +28,7 @@ func handleDomainError(c *gin.Context, err error) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
 	case errors.Is(err, postgres.ErrNotFound):
 		c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
-	case errors.Is(err, remote.ErrBadTarget):
+	case errors.Is(err, remote.ErrBadConn):
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 	default:
 		serverError(c, err)
