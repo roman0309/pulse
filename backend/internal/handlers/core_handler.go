@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/acme/observability/internal/agenthub"
 	"github.com/acme/observability/internal/domain/entities"
 	"github.com/acme/observability/internal/domain/services"
 	"github.com/acme/observability/internal/middleware"
@@ -14,12 +15,67 @@ import (
 )
 
 type CoreHandler struct {
-	core *services.CoreService
-	hub  *ws.Hub
+	core     *services.CoreService
+	hub      *ws.Hub
+	agentHub *agenthub.Hub
 }
 
-func NewCoreHandler(core *services.CoreService, hub *ws.Hub) *CoreHandler {
-	return &CoreHandler{core: core, hub: hub}
+func NewCoreHandler(core *services.CoreService, hub *ws.Hub, agentHub *agenthub.Hub) *CoreHandler {
+	return &CoreHandler{core: core, hub: hub, agentHub: agentHub}
+}
+
+// ---------- Agent control channel ----------
+
+// AgentConnect handles the agent's outbound control WebSocket (ingest-key auth).
+func (h *CoreHandler) AgentConnect(c *gin.Context) {
+	projectID := middleware.IngestProjectID(c)
+	agentID := c.Query("agent")
+	if agentID == "" {
+		agentID = "agent"
+	}
+	h.agentHub.Serve(c, projectID.String(), agentID)
+}
+
+// ListAgents returns the agents currently connected to the control channel.
+func (h *CoreHandler) ListAgents(c *gin.Context) {
+	projectID, ok := parseUUIDParam(c, "projectId")
+	if !ok {
+		return
+	}
+	if _, err := h.core.GetProject(c.Request.Context(), middleware.UserID(c), projectID); err != nil {
+		handleDomainError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"agents": h.agentHub.Connected(projectID.String())})
+}
+
+// SendCommand pushes a command to a connected agent and returns its reply.
+func (h *CoreHandler) SendCommand(c *gin.Context) {
+	projectID, ok := parseUUIDParam(c, "projectId")
+	if !ok {
+		return
+	}
+	if _, err := h.core.GetProject(c.Request.Context(), middleware.UserID(c), projectID); err != nil {
+		handleDomainError(c, err)
+		return
+	}
+	agentID := c.Param("agentId")
+	var req struct {
+		Cmd  string            `json:"cmd" binding:"required,oneof=ping status install_beyla remove"`
+		Args map[string]string `json:"args"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		badRequest(c, err)
+		return
+	}
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 60*time.Second)
+	defer cancel()
+	reply, err := h.agentHub.Send(ctx, projectID.String(), agentID, req.Cmd, req.Args)
+	if err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, reply)
 }
 
 // ---------- Organizations ----------

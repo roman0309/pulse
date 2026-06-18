@@ -298,6 +298,22 @@ export const api = {
       method: "POST",
     }),
 
+  // --- agent control channel (live, outbound WS) ---
+  listAgents: (projectId: string) =>
+    request<{ agents: string[] }>(`/projects/${projectId}/agents`).then(
+      (r) => r.agents ?? []
+    ),
+  sendAgentCommand: (
+    projectId: string,
+    agentId: string,
+    cmd: "ping" | "status" | "install_beyla" | "remove",
+    args?: Record<string, string>
+  ) =>
+    request<{ id: string; ok: boolean; output: string }>(
+      `/projects/${projectId}/agents/${encodeURIComponent(agentId)}/command`,
+      { method: "POST", body: JSON.stringify({ cmd, args }) }
+    ),
+
   // --- ingest keys (server onboarding) ---
   listIngestKeys: (projectId: string) =>
     request<{ keys: IngestKey[] }>(

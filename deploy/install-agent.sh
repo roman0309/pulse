@@ -30,6 +30,7 @@ docker run -d --name pulse-agent --restart unless-stopped \
   -e PULSE_INTERVAL="$PULSE_INTERVAL" \
   -e HOST_PROC=/host/proc -e HOST_SYS=/host/sys \
   -v /proc:/host/proc:ro -v /sys:/host/sys:ro \
+  -v /var/run/docker.sock:/var/run/docker.sock \
   "$AGENT_IMAGE" >/dev/null
 
 printf '\033[32m✓\033[0m pulse-agent running  (service=%s → %s)\n' "$PULSE_SERVICE" "$PULSE_ENDPOINT"

@@ -28,6 +28,7 @@ import {
 import { PageHeader, Spinner, EmptyState, Modal } from "@/components/common";
 import { relativeTime } from "@/lib/utils";
 import { ManagedServers } from "./ManagedServers";
+import { ControlAgents } from "./ControlAgents";
 import type { IngestKey } from "@/types";
 
 // Fallback ingest base for local dev: the backend's OTLP/ingest port on the
@@ -190,7 +191,10 @@ export function ConnectPage() {
         </CardContent>
       </Card>
 
-      {/* Auto-managed servers (Tailscale SSH) */}
+      {/* Live agents via the control channel (no SSH/VPN) */}
+      <ControlAgents projectId={projectId!} />
+
+      {/* Auto-managed servers (Tailscale SSH) — alternative */}
       <ManagedServers projectId={projectId!} />
 
       {/* Setup instructions */}
@@ -281,6 +285,7 @@ function SetupInstructions({
   -e PULSE_SERVICE=my-server \\
   -e HOST_PROC=/host/proc -e HOST_SYS=/host/sys \\
   -v /proc:/host/proc:ro -v /sys:/host/sys:ro \\
+  -v /var/run/docker.sock:/var/run/docker.sock \\
   ${agentImage}`;
       case "App metrics":
         return `# Push your app's RED metrics (request rate, errors, latency).

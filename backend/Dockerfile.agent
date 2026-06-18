@@ -9,6 +9,8 @@ RUN CGO_ENABLED=0 GOOS=linux go build -o /agent ./cmd/agent
 
 # ---- runtime stage ----
 FROM alpine:3.20
-RUN apk add --no-cache ca-certificates
+# docker-cli lets the agent execute control commands (install Beyla, etc.) on
+# its host via the mounted docker socket.
+RUN apk add --no-cache ca-certificates docker-cli
 COPY --from=build /agent /agent
 ENTRYPOINT ["/agent"]

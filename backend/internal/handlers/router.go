@@ -52,6 +52,8 @@ func NewRouter(
 		ingestGroup.POST("/otlp/v1/traces", ingest.OTLPTraces)
 		ingestGroup.POST("/api/v1/prom/write", ingest.PromRemoteWrite)
 		ingestGroup.POST("/api/v1/ingest/metrics", ingest.IngestMetricsJSON)
+		// agent control channel (agent dials out; key-authed)
+		ingestGroup.GET("/api/v1/agent/connect", core.AgentConnect)
 	}
 
 	limiter := middleware.NewRateLimiter(50, 100) // 50 rps, burst 100 per IP
@@ -114,6 +116,10 @@ func NewRouter(
 			p.POST("/servers/:serverId/install", core.InstallAgent)
 			p.POST("/servers/:serverId/remove", core.RemoveAgent)
 			p.POST("/servers/:serverId/status", core.ServerStatus)
+
+			// agent control channel (live agents + commands)
+			p.GET("/agents", core.ListAgents)
+			p.POST("/agents/:agentId/command", core.SendCommand)
 
 			// ingest key management (server onboarding)
 			p.GET("/ingest-keys", core.ListIngestKeys)

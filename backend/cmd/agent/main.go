@@ -13,10 +13,16 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
+	"os/exec"
+	"strings"
 	"time"
+
+	"github.com/gorilla/websocket"
 
 	"github.com/shirou/gopsutil/v4/cpu"
 	"github.com/shirou/gopsutil/v4/disk"
@@ -44,6 +50,10 @@ func main() {
 	}
 
 	log.Printf("pulse-agent: service=%q endpoint=%s interval=%s", cfg.service, cfg.endpoint, cfg.interval)
+
+	// Control channel: outbound WS to Pulse for remote commands (install Beyla,
+	// status, remove). Best-effort — metrics keep flowing even if it can't connect.
+	go runControl(cfg.endpoint, cfg.key, cfg.service)
 
 	// Prime the CPU counter so the first real reading is meaningful.
 	_, _ = cpu.Percent(0, false)
@@ -148,6 +158,102 @@ func post(ctx context.Context, url, key string, body []byte) error {
 type httpError struct{ code int }
 
 func (e *httpError) Error() string { return "unexpected status " + http.StatusText(e.code) }
+
+// ---------- Control channel ----------
+
+type ctrlCommand struct {
+	ID   string            `json:"id"`
+	Cmd  string            `json:"cmd"`
+	Args map[string]string `json:"args"`
+}
+
+type ctrlReply struct {
+	ID     string `json:"id"`
+	OK     bool   `json:"ok"`
+	Output string `json:"output"`
+}
+
+// runControl maintains an outbound WebSocket to Pulse and executes commands.
+func runControl(endpoint, key, service string) {
+	wsURL := toWS(endpoint) + "/api/v1/agent/connect?agent=" + url.QueryEscape(service)
+	hdr := http.Header{"X-Pulse-Key": []string{key}}
+	for {
+		conn, _, err := websocket.DefaultDialer.Dial(wsURL, hdr)
+		if err != nil {
+			time.Sleep(5 * time.Second)
+			continue
+		}
+		log.Printf("control channel connected")
+		for {
+			_, msg, err := conn.ReadMessage()
+			if err != nil {
+				break
+			}
+			var cmd ctrlCommand
+			if json.Unmarshal(msg, &cmd) != nil {
+				continue
+			}
+			reply := handleCommand(cmd, endpoint, key, service)
+			conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
+			_ = conn.WriteJSON(reply)
+		}
+		conn.Close()
+		time.Sleep(3 * time.Second)
+	}
+}
+
+func handleCommand(cmd ctrlCommand, endpoint, key, service string) ctrlReply {
+	switch cmd.Cmd {
+	case "ping":
+		return ctrlReply{cmd.ID, true, "pong"}
+	case "status":
+		out, err := dockerOut("ps", "--filter", "name=pulse-beyla", "--format", "{{.Names}} {{.Status}}")
+		return ctrlReply{cmd.ID, err == nil, strOr(out, "no app-metrics agent running")}
+	case "install_beyla":
+		port := cmd.Args["port"]
+		if port == "" {
+			port = "8080"
+		}
+		_, _ = dockerOut("rm", "-f", "pulse-beyla")
+		out, err := dockerOut("run", "-d", "--name", "pulse-beyla", "--restart", "unless-stopped",
+			"--privileged", "--pid=host",
+			"-e", "BEYLA_OPEN_PORT="+port,
+			"-e", "OTEL_SERVICE_NAME="+service,
+			"-e", "OTEL_EXPORTER_OTLP_ENDPOINT="+endpoint+"/otlp",
+			"-e", "OTEL_EXPORTER_OTLP_HEADERS=X-Pulse-Key="+key,
+			"-e", "OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE=delta",
+			"grafana/beyla:latest")
+		return ctrlReply{cmd.ID, err == nil, out}
+	case "remove":
+		out, err := dockerOut("rm", "-f", "pulse-beyla")
+		return ctrlReply{cmd.ID, err == nil, strOr(out, "removed")}
+	default:
+		return ctrlReply{cmd.ID, false, "unknown command: " + cmd.Cmd}
+	}
+}
+
+func dockerOut(args ...string) (string, error) {
+	out, err := exec.Command("docker", args...).CombinedOutput()
+	s := strings.TrimSpace(string(out))
+	if err != nil && s == "" {
+		s = err.Error()
+	}
+	return s, err
+}
+
+func toWS(endpoint string) string {
+	if strings.HasPrefix(endpoint, "https://") {
+		return "wss://" + strings.TrimPrefix(endpoint, "https://")
+	}
+	return "ws://" + strings.TrimPrefix(endpoint, "http://")
+}
+
+func strOr(s, def string) string {
+	if strings.TrimSpace(s) == "" {
+		return def
+	}
+	return s
+}
 
 func env(k, def string) string {
 	if v := os.Getenv(k); v != "" {

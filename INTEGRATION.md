@@ -287,7 +287,21 @@ docker run -d --name pulse-beyla --restart unless-stopped \
 `delta` temporality is important — it makes each export reflect the recent interval, so
 the latency percentiles are current. No code, no redeploy of your app.
 
-## Manage agents from the UI (Tailscale SSH)
+## Manage agents from the UI (control channel — recommended)
+
+Once the host agent is installed, it opens an **outbound** WebSocket back to Pulse (the
+control channel). No SSH, no VPN, no inbound access — works through NAT. In **Connect →
+Connected agents** you then manage each agent with buttons:
+
+- **App metrics** — installs the eBPF app-instrumentation (Beyla) on that host for the
+  given port (latency/errors/RPS, zero code).
+- **Status** / **Remove**.
+
+This requires the agent to have the host docker socket mounted (the installer and the
+Connect command already include `-v /var/run/docker.sock:/var/run/docker.sock`). Commands
+run on the agent's own host; nothing is stored in Pulse and Pulse never connects inward.
+
+## Manage agents from the UI (Tailscale SSH — alternative)
 
 Instead of running commands by hand, you can add servers in **Connect → Servers** and
 install/remove the agent with buttons. Pulse connects over **Tailscale SSH** — no

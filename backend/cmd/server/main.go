@@ -9,6 +9,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/acme/observability/internal/agenthub"
 	"github.com/acme/observability/internal/alerting"
 	"github.com/acme/observability/internal/analyzer"
 	"github.com/acme/observability/internal/config"
@@ -71,8 +72,9 @@ func main() {
 	metricRepo := chrepo.NewMetricRepo(ch)
 	logRepo := chrepo.NewLogRepo(ch)
 
-	// --- Realtime hub ---
+	// --- Realtime + agent control hubs ---
 	hub := ws.NewHub()
+	agentControl := agenthub.New()
 
 	// --- Services (dependency injection) ---
 	tokens := services.NewTokenService(cfg.JWTSecret, cfg.JWTRefreshSecret, cfg.AccessTTL, cfg.RefreshTTL)
@@ -114,7 +116,7 @@ func main() {
 
 	// --- Handlers + Router ---
 	authHandler := handlers.NewAuthHandler(authService)
-	coreHandler := handlers.NewCoreHandler(coreService, hub)
+	coreHandler := handlers.NewCoreHandler(coreService, hub, agentControl)
 	ingestHandler := handlers.NewIngestHandler(coreService)
 	router := handlers.NewRouter(cfg, tokens, ingestKeyRepo, authHandler, coreHandler, ingestHandler)
 
