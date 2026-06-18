@@ -313,10 +313,17 @@ over SSH from its own host.
 - **Install** mints a per-server ingest key and runs the agent installer over SSH.
 - The command box runs arbitrary commands on the server and shows the output.
 
-> **Security:** this makes the Pulse host able to SSH into your servers — keep its
-> credentials safe and its access scoped. Host keys are currently trusted on connect;
-> prefer running this over a trusted/VPN network. The control-channel approach above
-> avoids storing credentials and is recommended where possible.
+**Hardening built in:**
+- **Host-key pinning (TOFU):** the server's SSH host key is recorded on first connect
+  and verified on every subsequent connect — a changed key is refused (MITM protection).
+- **RBAC:** only project **owners/admins** can add servers or run commands; members are
+  read-only.
+- **Audit log:** every remote action (add/install/remove/status/run) is recorded with
+  the user, target and outcome (`GET /projects/:id/audit`).
+
+> Still, this makes the Pulse host able to SSH into your servers — keep it secured. The
+> control-channel approach above avoids storing credentials and is recommended where
+> possible.
 
 ## Step 3 — Verify it's flowing
 

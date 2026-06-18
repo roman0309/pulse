@@ -70,6 +70,7 @@ func main() {
 	ingestKeyRepo := pgrepo.NewIngestKeyRepo(pg)
 	alertRuleRepo := pgrepo.NewAlertRuleRepo(pg)
 	serverRepo := pgrepo.NewServerRepo(pg)
+	auditRepo := pgrepo.NewAuditRepo(pg)
 	metricRepo := chrepo.NewMetricRepo(ch)
 	logRepo := chrepo.NewLogRepo(ch)
 
@@ -92,6 +93,7 @@ func main() {
 		IngestKeys:      ingestKeyRepo,
 		AlertRules:      alertRuleRepo,
 		Servers:         serverRepo,
+		Audit:           auditRepo,
 		Analyzer:        analyzer.NewDeterministic(),
 		Hub:             hub,
 		Exec:            remote.NewSSH(),

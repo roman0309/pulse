@@ -482,6 +482,20 @@ func (h *CoreHandler) AddServer(c *gin.Context) {
 	c.JSON(http.StatusCreated, srv)
 }
 
+// ListAudit returns recent remote-action audit entries.
+func (h *CoreHandler) ListAudit(c *gin.Context) {
+	projectID, ok := parseUUIDParam(c, "projectId")
+	if !ok {
+		return
+	}
+	entries, err := h.core.ListAudit(c.Request.Context(), middleware.UserID(c), projectID)
+	if err != nil {
+		handleDomainError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"entries": entries})
+}
+
 // RunServerCommand runs an arbitrary command on a server over SSH.
 func (h *CoreHandler) RunServerCommand(c *gin.Context) {
 	serverID, ok := parseUUIDParam(c, "serverId")

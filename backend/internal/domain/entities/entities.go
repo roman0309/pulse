@@ -79,11 +79,23 @@ type ManagedServer struct {
 	SSHUser     string     `json:"ssh_user"`
 	AuthMethod  string     `json:"auth_method"` // password | key
 	SecretEnc   string     `json:"-"`           // encrypted credential, never serialized
+	HostKey     string     `json:"host_key"`    // pinned SSH host-key fingerprint (TOFU)
 	Status      string     `json:"status"`
 	LastResult  string     `json:"last_result"`
 	IngestKeyID *uuid.UUID `json:"-"`
 	CreatedAt   time.Time  `json:"created_at"`
 	UpdatedAt   time.Time  `json:"updated_at"`
+}
+
+type AuditEntry struct {
+	ID        uuid.UUID  `json:"id"`
+	ProjectID uuid.UUID  `json:"project_id"`
+	UserID    *uuid.UUID `json:"user_id"`
+	ServerID  *uuid.UUID `json:"server_id"`
+	Action    string     `json:"action"`
+	Detail    string     `json:"detail"`
+	Success   bool       `json:"success"`
+	CreatedAt time.Time  `json:"created_at"`
 }
 
 // ---------- Projects ----------

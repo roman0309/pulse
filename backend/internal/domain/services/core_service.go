@@ -36,6 +36,7 @@ type CoreService struct {
 	IngestKeys  repositories.IngestKeyRepository
 	AlertRules  repositories.AlertRuleRepository
 	Servers     repositories.ServerRepository
+	Audit       repositories.AuditRepository
 	Analyzer    analyzer.Analyzer
 	Hub         *ws.Hub
 	Exec        remote.Executor
@@ -48,6 +49,54 @@ const agentInstallerURL = "https://raw.githubusercontent.com/roman0309/pulse/mai
 
 // ---------- Managed servers (remote agent management over SSH) ----------
 
+func roleRank(r entities.OrgRole) int {
+	switch r {
+	case entities.RoleOwner:
+		return 3
+	case entities.RoleAdmin:
+		return 2
+	case entities.RoleMember:
+		return 1
+	}
+	return 0
+}
+
+// requireAdmin ensures the user is owner/admin of the project's org — required
+// for actions that execute on remote servers.
+func (s *CoreService) requireAdmin(ctx context.Context, userID, projectID uuid.UUID) error {
+	p, err := s.Projects.GetByID(ctx, projectID)
+	if err != nil {
+		return err
+	}
+	role, err := s.Orgs.GetMemberRole(ctx, p.OrganizationID, userID)
+	if err != nil || roleRank(role) < roleRank(entities.RoleAdmin) {
+		return ErrForbidden
+	}
+	return nil
+}
+
+func (s *CoreService) audit(ctx context.Context, projectID, userID uuid.UUID, serverID *uuid.UUID, action, detail string, success bool) {
+	uid := userID
+	_ = s.Audit.Create(ctx, &entities.AuditEntry{
+		ProjectID: projectID, UserID: &uid, ServerID: serverID,
+		Action: action, Detail: truncate(detail, 1000), Success: success,
+	})
+}
+
+// ListAudit returns recent remote-action audit entries for a project.
+func (s *CoreService) ListAudit(ctx context.Context, userID, projectID uuid.UUID) ([]entities.AuditEntry, error) {
+	if _, err := s.requireProjectAccess(ctx, userID, projectID); err != nil {
+		return nil, err
+	}
+	return s.Audit.ListByProject(ctx, projectID, 100)
+}
+
+func (s *CoreService) pinHostKey(srv *entities.ManagedServer, observed string) {
+	if observed != "" && srv.HostKey == "" {
+		srv.HostKey = observed
+	}
+}
+
 func (s *CoreService) ListServers(ctx context.Context, userID, projectID uuid.UUID) ([]entities.ManagedServer, error) {
 	if _, err := s.requireProjectAccess(ctx, userID, projectID); err != nil {
 		return nil, err
@@ -57,7 +106,7 @@ func (s *CoreService) ListServers(ctx context.Context, userID, projectID uuid.UU
 
 // AddServer stores a server with SSH credentials (the secret is encrypted at rest).
 func (s *CoreService) AddServer(ctx context.Context, userID, projectID uuid.UUID, name, host string, port int, user, authMethod, secret string) (*entities.ManagedServer, error) {
-	if _, err := s.requireProjectAccess(ctx, userID, projectID); err != nil {
+	if err := s.requireAdmin(ctx, userID, projectID); err != nil {
 		return nil, err
 	}
 	if host == "" || user == "" || secret == "" {
@@ -87,7 +136,11 @@ func (s *CoreService) AddServer(ctx context.Context, userID, projectID uuid.UUID
 		SecretEnc:  enc,
 		Status:     "pending",
 	}
-	return srv, s.Servers.Create(ctx, srv)
+	if err := s.Servers.Create(ctx, srv); err != nil {
+		return nil, err
+	}
+	s.audit(ctx, projectID, userID, &srv.ID, "add_server", srv.SSHTarget, true)
+	return srv, nil
 }
 
 func (s *CoreService) connFor(srv *entities.ManagedServer) (remote.Conn, error) {
@@ -95,7 +148,7 @@ func (s *CoreService) connFor(srv *entities.ManagedServer) (remote.Conn, error) 
 	if err != nil {
 		return remote.Conn{}, err
 	}
-	c := remote.Conn{Host: srv.SSHHost, Port: srv.SSHPort, User: srv.SSHUser}
+	c := remote.Conn{Host: srv.SSHHost, Port: srv.SSHPort, User: srv.SSHUser, KnownHostKey: srv.HostKey}
 	if srv.AuthMethod == "key" {
 		c.PrivateKey = secret
 	} else {
@@ -114,12 +167,14 @@ func (s *CoreService) RunCommand(ctx context.Context, userID, serverID uuid.UUID
 	if err != nil {
 		return nil, err
 	}
-	out, runErr := s.Exec.Run(ctx, conn, command)
+	out, hostKey, runErr := s.Exec.Run(ctx, conn, command)
+	s.pinHostKey(srv, hostKey)
 	srv.LastResult = truncate(out, 4000)
 	if runErr != nil {
 		srv.LastResult = truncate(out+"\n"+runErr.Error(), 4000)
 	}
 	_ = s.Servers.Update(ctx, srv)
+	s.audit(ctx, srv.ProjectID, userID, &srv.ID, "run", command, runErr == nil)
 	return srv, nil
 }
 
@@ -128,12 +183,13 @@ func (s *CoreService) DeleteServer(ctx context.Context, userID, projectID, serve
 	if err != nil {
 		return err
 	}
-	if _, err := s.requireProjectAccess(ctx, userID, srv.ProjectID); err != nil {
+	if err := s.requireAdmin(ctx, userID, srv.ProjectID); err != nil {
 		return err
 	}
 	if srv.IngestKeyID != nil {
 		_ = s.IngestKeys.Delete(ctx, projectID, *srv.IngestKeyID)
 	}
+	s.audit(ctx, projectID, userID, &serverID, "delete_server", srv.SSHTarget, true)
 	return s.Servers.Delete(ctx, projectID, serverID)
 }
 
@@ -158,7 +214,8 @@ func (s *CoreService) InstallAgent(ctx context.Context, userID, serverID uuid.UU
 	}
 	cmd := fmt.Sprintf("curl -fsSL %s | PULSE_ENDPOINT=%s PULSE_KEY=%s PULSE_SERVICE=%s sh",
 		agentInstallerURL, endpoint, key.Token, srv.Name)
-	out, runErr := s.Exec.Run(ctx, conn, cmd)
+	out, hostKey, runErr := s.Exec.Run(ctx, conn, cmd)
+	s.pinHostKey(srv, hostKey)
 
 	srv.IngestKeyID = &key.ID
 	srv.LastResult = truncate(out, 2000)
@@ -169,6 +226,7 @@ func (s *CoreService) InstallAgent(ctx context.Context, userID, serverID uuid.UU
 		srv.Status = "installed"
 	}
 	_ = s.Servers.Update(ctx, srv)
+	s.audit(ctx, srv.ProjectID, userID, &srv.ID, "install", "", runErr == nil)
 	return srv, nil
 }
 
@@ -182,7 +240,8 @@ func (s *CoreService) RemoveAgent(ctx context.Context, userID, serverID uuid.UUI
 	if err != nil {
 		return nil, err
 	}
-	out, runErr := s.Exec.Run(ctx, conn, "docker rm -f pulse-agent pulse-beyla 2>/dev/null; echo removed")
+	out, hostKey, runErr := s.Exec.Run(ctx, conn, "docker rm -f pulse-agent pulse-beyla 2>/dev/null; echo removed")
+	s.pinHostKey(srv, hostKey)
 	if srv.IngestKeyID != nil {
 		_ = s.IngestKeys.Delete(ctx, srv.ProjectID, *srv.IngestKeyID)
 		srv.IngestKeyID = nil
@@ -194,6 +253,7 @@ func (s *CoreService) RemoveAgent(ctx context.Context, userID, serverID uuid.UUI
 		srv.LastResult = truncate(out+"\n"+runErr.Error(), 2000)
 	}
 	_ = s.Servers.Update(ctx, srv)
+	s.audit(ctx, srv.ProjectID, userID, &srv.ID, "remove", "", runErr == nil)
 	return srv, nil
 }
 
@@ -207,13 +267,15 @@ func (s *CoreService) CheckStatus(ctx context.Context, userID, serverID uuid.UUI
 	if err != nil {
 		return nil, err
 	}
-	out, runErr := s.Exec.Run(ctx, conn,
+	out, hostKey, runErr := s.Exec.Run(ctx, conn,
 		"docker ps --filter name=pulse-agent --filter name=pulse-beyla --format '{{.Names}} {{.Status}}'")
+	s.pinHostKey(srv, hostKey)
 	srv.LastResult = truncate(out, 2000)
 	if runErr != nil {
 		srv.LastResult = truncate(out+"\n"+runErr.Error(), 2000)
 	}
 	_ = s.Servers.Update(ctx, srv)
+	s.audit(ctx, srv.ProjectID, userID, &srv.ID, "status", "", runErr == nil)
 	return srv, nil
 }
 
@@ -222,7 +284,7 @@ func (s *CoreService) serverForUser(ctx context.Context, userID, serverID uuid.U
 	if err != nil {
 		return nil, err
 	}
-	if _, err := s.requireProjectAccess(ctx, userID, srv.ProjectID); err != nil {
+	if err := s.requireAdmin(ctx, userID, srv.ProjectID); err != nil {
 		return nil, err
 	}
 	if s.Exec == nil {

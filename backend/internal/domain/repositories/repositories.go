@@ -59,6 +59,12 @@ type ServerRepository interface {
 	Delete(ctx context.Context, projectID, id uuid.UUID) error
 }
 
+// AuditRepository records and lists remote-action audit entries.
+type AuditRepository interface {
+	Create(ctx context.Context, e *entities.AuditEntry) error
+	ListByProject(ctx context.Context, projectID uuid.UUID, limit int) ([]entities.AuditEntry, error)
+}
+
 // IngestKeyRepository manages ingestion API keys.
 type IngestKeyRepository interface {
 	ResolveProject(ctx context.Context, keyHash string) (uuid.UUID, error)

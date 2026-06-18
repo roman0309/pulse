@@ -15,12 +15,12 @@ type ServerRepo struct{ db *pgxpool.Pool }
 func NewServerRepo(db *pgxpool.Pool) *ServerRepo { return &ServerRepo{db: db} }
 
 const serverCols = `id, project_id, name, ssh_target, ssh_host, ssh_port, ssh_user, auth_method,
-	secret_enc, status, last_result, ingest_key_id, created_at, updated_at`
+	secret_enc, host_key, status, last_result, ingest_key_id, created_at, updated_at`
 
 func scanServer(row pgx.Row) (*entities.ManagedServer, error) {
 	s := &entities.ManagedServer{}
 	err := row.Scan(&s.ID, &s.ProjectID, &s.Name, &s.SSHTarget, &s.SSHHost, &s.SSHPort, &s.SSHUser,
-		&s.AuthMethod, &s.SecretEnc, &s.Status, &s.LastResult, &s.IngestKeyID, &s.CreatedAt, &s.UpdatedAt)
+		&s.AuthMethod, &s.SecretEnc, &s.HostKey, &s.Status, &s.LastResult, &s.IngestKeyID, &s.CreatedAt, &s.UpdatedAt)
 	return s, err
 }
 
@@ -60,8 +60,8 @@ func (r *ServerRepo) GetByID(ctx context.Context, id uuid.UUID) (*entities.Manag
 
 func (r *ServerRepo) Update(ctx context.Context, s *entities.ManagedServer) error {
 	_, err := r.db.Exec(ctx,
-		`UPDATE managed_servers SET name=$2, ssh_target=$3, status=$4, last_result=$5, ingest_key_id=$6 WHERE id=$1`,
-		s.ID, s.Name, s.SSHTarget, s.Status, s.LastResult, s.IngestKeyID,
+		`UPDATE managed_servers SET name=$2, ssh_target=$3, status=$4, last_result=$5, ingest_key_id=$6, host_key=$7 WHERE id=$1`,
+		s.ID, s.Name, s.SSHTarget, s.Status, s.LastResult, s.IngestKeyID, s.HostKey,
 	)
 	return err
 }
