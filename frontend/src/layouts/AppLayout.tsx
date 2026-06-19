@@ -1,4 +1,4 @@
-import { NavLink, Navigate, Outlet, useLocation, useNavigate, useParams } from "react-router-dom";
+import { NavLink, Outlet, useLocation, useNavigate, useParams } from "react-router-dom";
 import {
   Activity,
   AlertTriangle,
@@ -59,8 +59,9 @@ export function AppLayout() {
   const onGatedTab = gatedTabs.has(currentTab);
   const locked = (item: NavItem) => !!item.gate && !ready;
 
-  // Route guard: a gated view requested before the project is ready bounces
-  // to Connect (covers direct URLs and the index → overview redirect).
+  // Gate: a data view requested before the project is ready shows a friendly
+  // prompt to connect (covers direct URLs and the index → overview redirect)
+  // instead of rendering an empty dashboard.
   let content: React.ReactNode;
   if (onGatedTab && loading) {
     content = (
@@ -69,7 +70,24 @@ export function AppLayout() {
       </div>
     );
   } else if (onGatedTab && !ready) {
-    content = <Navigate to={connectPath} replace />;
+    content = (
+      <div className="flex min-h-[60vh] flex-col items-center justify-center text-center">
+        <div className="flex h-12 w-12 items-center justify-center rounded-full bg-surface-2 text-fg-muted">
+          <ServerCog className="h-6 w-6" />
+        </div>
+        <h2 className="mt-4 text-lg font-semibold text-fg">No data yet</h2>
+        <p className="mt-1 max-w-sm text-sm text-fg-muted">
+          Connect a server and install the agent — metrics, logs and alerts unlock
+          automatically once data starts flowing.
+        </p>
+        <button
+          onClick={() => navigate(connectPath)}
+          className="mt-5 inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-fg transition hover:opacity-90"
+        >
+          <ServerCog className="h-4 w-4" /> Connect a server
+        </button>
+      </div>
+    );
   } else {
     content = <Outlet />;
   }

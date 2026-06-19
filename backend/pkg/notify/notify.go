@@ -1,4 +1,4 @@
-// Package notify delivers alert notifications to Slack or generic webhooks.
+// Package notify delivers alert notifications to Slack, Telegram or generic webhooks.
 package notify
 
 import (
@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	neturl "net/url"
 	"time"
 )
 
@@ -28,8 +29,13 @@ type Message struct {
 	Description string  `json:"description"`
 }
 
-// Send delivers the message according to the channel type ("slack" | "webhook").
-// Best-effort: returns an error for logging but never panics.
+// Send delivers the message according to the channel type
+// ("slack" | "telegram" | "webhook"). Best-effort: returns an error for
+// logging but never panics.
+//
+// Telegram: set the URL to the bot sendMessage endpoint with the chat id, e.g.
+//
+//	https://api.telegram.org/bot<TOKEN>/sendMessage?chat_id=<CHAT_ID>
 func (n *Notifier) Send(ctx context.Context, channelType, url string, msg Message) error {
 	if url == "" || channelType == "" || channelType == "none" {
 		return nil
@@ -44,6 +50,24 @@ func (n *Notifier) Send(ctx context.Context, channelType, url string, msg Messag
 		}
 		text := fmt.Sprintf("%s *%s* — %s\n%s", emoji, msg.Title, msg.Status, msg.Description)
 		body, err = json.Marshal(map[string]string{"text": text})
+	case "telegram":
+		emoji := "🔴"
+		if msg.Status == "resolved" {
+			emoji = "✅"
+		}
+		text := fmt.Sprintf("%s %s — %s\n%s", emoji, msg.Title, msg.Status, msg.Description)
+		payload := map[string]any{"text": text, "disable_web_page_preview": true}
+		// Pull chat_id out of the query so we can POST a clean JSON body.
+		if u, perr := neturl.Parse(url); perr == nil {
+			q := u.Query()
+			if cid := q.Get("chat_id"); cid != "" {
+				payload["chat_id"] = cid
+				q.Del("chat_id")
+				u.RawQuery = q.Encode()
+				url = u.String()
+			}
+		}
+		body, err = json.Marshal(payload)
 	default: // generic webhook
 		body, err = json.Marshal(map[string]any{"alert": msg})
 	}

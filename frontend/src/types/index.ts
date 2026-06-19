@@ -153,7 +153,7 @@ export interface AlertRule {
   for_seconds: number;
   severity: AlertSeverity;
   type: AlertType;
-  notify_type: "none" | "slack" | "webhook";
+  notify_type: "none" | "slack" | "telegram" | "webhook";
   notify_url: string;
   enabled: boolean;
   created_at: string;

@@ -247,6 +247,7 @@ function RuleModal({
             <Select className="w-full" value={form.notify_type} onChange={(e) => set("notify_type", e.target.value)}>
               <option value="none">none</option>
               <option value="slack">Slack</option>
+              <option value="telegram">Telegram</option>
               <option value="webhook">Webhook</option>
             </Select>
           </div>
@@ -255,7 +256,13 @@ function RuleModal({
             <Input
               value={form.notify_url}
               onChange={(e) => set("notify_url", e.target.value)}
-              placeholder="https://hooks.slack.com/…"
+              placeholder={
+                form.notify_type === "telegram"
+                  ? "https://api.telegram.org/bot<TOKEN>/sendMessage?chat_id=<ID>"
+                  : form.notify_type === "slack"
+                    ? "https://hooks.slack.com/…"
+                    : "https://example.com/webhook"
+              }
               disabled={form.notify_type === "none"}
             />
           </div>

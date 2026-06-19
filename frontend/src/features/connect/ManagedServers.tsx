@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Plus,
@@ -148,9 +148,35 @@ function ServerRow({
   };
   const errText = (e: unknown) => (e instanceof Error ? e.message : "error");
 
+  // statusOut holds the latest `docker ps` for pulse-agent/pulse-beyla;
+  // null = not checked yet (pills show "checking…").
+  const [statusOut, setStatusOut] = useState<string | null>(null);
+
+  // Refresh the live container status. Silent by default (updates the pills
+  // only); showOutput renders it in the Output panel too.
+  const statusCheck = useMutation({
+    mutationFn: (_v?: { showOutput?: boolean }) => api.serverAction(projectId, server.id, "status"),
+    onSuccess: (s, v) => {
+      setStatusOut(s.last_result ?? "");
+      onChange();
+      if (v?.showOutput) {
+        setLabel("Status");
+        setOut(s.last_result || "(no Pulse containers running)");
+        setAt(new Date());
+      }
+    },
+    onError: (e, v) => {
+      if (v?.showOutput) onResult(errText(e));
+    },
+  });
+  const refreshStatus = () => statusCheck.mutate({ showOutput: false });
+
   const action = useMutation({
-    mutationFn: (act: "install" | "remove" | "status") => api.serverAction(projectId, server.id, act),
-    onSuccess: (s) => onResult(s.last_result || s.status, true),
+    mutationFn: (act: "install" | "remove") => api.serverAction(projectId, server.id, act),
+    onSuccess: (s) => {
+      onResult(s.last_result || s.status, true);
+      refreshStatus();
+    },
     onError: (e) => onResult(errText(e)),
   });
   const run = useMutation({
@@ -160,17 +186,32 @@ function ServerRow({
   });
   const beyla = useMutation({
     mutationFn: (p: string) => api.installBeyla(projectId, server.id, p),
-    onSuccess: (s) => onResult(s.last_result || "(no output)", true),
+    onSuccess: (s) => {
+      onResult(s.last_result || "(no output)", true);
+      refreshStatus();
+    },
     onError: (e) => onResult(errText(e)),
   });
   const beylaRemove = useMutation({
     mutationFn: () => api.removeBeyla(projectId, server.id),
-    onSuccess: (s) => onResult(s.last_result || "(no output)", true),
+    onSuccess: (s) => {
+      onResult(s.last_result || "(no output)", true);
+      refreshStatus();
+    },
     onError: (e) => onResult(errText(e)),
   });
-  const busy = action.isPending || run.isPending || beyla.isPending || beylaRemove.isPending;
+  const busy = action.isPending || run.isPending || beyla.isPending || beylaRemove.isPending || statusCheck.isPending;
 
-  function act(lbl: string, a: "install" | "remove" | "status") {
+  // Auto-check status the first time the console is opened.
+  useEffect(() => {
+    if (open && statusOut === null && !statusCheck.isPending) refreshStatus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
+  const agentState = statusOut === null ? "unknown" : statusOut.includes("pulse-agent") ? "running" : "stopped";
+  const beylaState = statusOut === null ? "unknown" : statusOut.includes("pulse-beyla") ? "running" : "stopped";
+
+  function act(lbl: string, a: "install" | "remove") {
     setLabel(lbl);
     setOpen(true);
     action.mutate(a);
@@ -215,7 +256,16 @@ function ServerRow({
           </div>
         </button>
         <div className="flex shrink-0 items-center gap-1.5">
-          <Button variant="outline" size="sm" disabled={busy} onClick={() => act("Status", "status")} title="Check containers (pulse-agent, pulse-beyla)">
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={busy}
+            onClick={() => {
+              setOpen(true);
+              statusCheck.mutate({ showOutput: true });
+            }}
+            title="Check containers (pulse-agent, pulse-beyla)"
+          >
             <RefreshCw className={cn("h-3.5 w-3.5", busy && "animate-spin")} /> Status
           </Button>
           <button
@@ -240,6 +290,7 @@ function ServerRow({
               icon={<ServerCog className="h-4 w-4" />}
               title="Host agent"
               desc="CPU · memory · disk · network"
+              status={<StatusPill state={agentState} />}
             >
               <Button variant="primary" size="sm" disabled={busy} onClick={() => act("Install / update host agent", "install")}>
                 <Download className="h-3.5 w-3.5" /> Install / update
@@ -268,6 +319,7 @@ function ServerRow({
               icon={<Gauge className="h-4 w-4" />}
               title="App metrics — Beyla"
               desc="zero-code RED metrics, no app changes"
+              status={<StatusPill state={beylaState} />}
             >
               <div className="flex w-full items-center gap-1.5">
                 <Input
@@ -367,30 +419,42 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 }
 
 // CompCard groups one server component (host agent / Beyla) with its own
-// description and a row of lifecycle actions.
+// description, a live status pill and a row of lifecycle actions.
 function CompCard({
   icon,
   title,
   desc,
+  status,
   children,
 }: {
   icon: React.ReactNode;
   title: string;
   desc: string;
+  status?: React.ReactNode;
   children: React.ReactNode;
 }) {
   return (
     <div className="rounded-md border border-border bg-surface-2/40 p-3">
-      <div className="flex items-start gap-2">
-        <span className="mt-0.5 text-fg-muted">{icon}</span>
-        <div className="min-w-0">
-          <p className="text-sm font-medium text-fg">{title}</p>
-          <p className="text-xs text-fg-muted">{desc}</p>
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex items-start gap-2">
+          <span className="mt-0.5 text-fg-muted">{icon}</span>
+          <div className="min-w-0">
+            <p className="text-sm font-medium text-fg">{title}</p>
+            <p className="text-xs text-fg-muted">{desc}</p>
+          </div>
         </div>
+        {status && <div className="shrink-0">{status}</div>}
       </div>
       <div className="mt-2.5 flex flex-wrap items-center gap-1.5">{children}</div>
     </div>
   );
+}
+
+function StatusPill({ state }: { state: "running" | "stopped" | "unknown" }) {
+  if (state === "unknown") {
+    return <span className="text-[11px] text-fg-muted">checking…</span>;
+  }
+  return <Badge tone={state === "running" ? "success" : "muted"}>{state}</Badge>;
 }
 
 function AddServerModal({

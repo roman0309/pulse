@@ -186,6 +186,13 @@ func (s *CoreService) DeleteServer(ctx context.Context, userID, projectID, serve
 	if err := s.requireAdmin(ctx, userID, srv.ProjectID); err != nil {
 		return err
 	}
+	// Best-effort: stop the agents on the host so they don't keep pushing with
+	// a revoked key. Never blocks deletion (the server may be unreachable).
+	if s.Exec != nil {
+		if conn, cerr := s.connFor(srv); cerr == nil {
+			_, _, _ = s.Exec.Run(ctx, conn, "docker rm -f pulse-agent pulse-beyla 2>/dev/null; echo cleaned")
+		}
+	}
 	if srv.IngestKeyID != nil {
 		_ = s.IngestKeys.Delete(ctx, projectID, *srv.IngestKeyID)
 	}

@@ -5,6 +5,7 @@ import (
 	"compress/gzip"
 	"io"
 	"net/http"
+	"strings"
 
 	"github.com/acme/observability/internal/domain/entities"
 	"github.com/acme/observability/internal/domain/services"
@@ -13,6 +14,14 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 )
+
+// anonService reports whether a telemetry stream carries no usable service
+// identity. Beyla emits "unknown" for processes it can't name; we drop those
+// rather than pollute the project with a phantom "unknown" service.
+func anonService(name string) bool {
+	n := strings.TrimSpace(strings.ToLower(name))
+	return n == "" || n == "unknown"
+}
 
 const maxIngestBody = 16 << 20 // 16 MiB
 
@@ -55,6 +64,9 @@ func (h *IngestHandler) OTLPLogs(c *gin.Context) {
 	cache := newServiceCache(h.core, projectID)
 	logs := make([]entities.LogEntry, 0, len(raw))
 	for _, l := range raw {
+		if anonService(l.ServiceName) {
+			continue
+		}
 		sid, name := cache.resolve(c, l.ServiceName)
 		logs = append(logs, entities.LogEntry{
 			ProjectID:   projectID.String(),
@@ -127,6 +139,9 @@ func (h *IngestHandler) writeMetrics(c *gin.Context, raw []ingest.RawMetric) {
 	cache := newServiceCache(h.core, projectID)
 	points := make([]entities.MetricPoint, 0, len(raw))
 	for _, m := range raw {
+		if anonService(m.ServiceName) {
+			continue
+		}
 		sid, name := cache.resolve(c, m.ServiceName)
 		points = append(points, entities.MetricPoint{
 			ProjectID:   projectID.String(),
