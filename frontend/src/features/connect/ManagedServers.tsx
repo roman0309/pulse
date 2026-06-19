@@ -1,6 +1,20 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus, ServerCog, Trash2, Download, StopCircle, RefreshCw, Terminal } from "lucide-react";
+import {
+  Plus,
+  ServerCog,
+  Trash2,
+  Download,
+  StopCircle,
+  RefreshCw,
+  Terminal,
+  FileText,
+  RotateCw,
+  Boxes,
+  HardDrive,
+  MemoryStick,
+  Clock,
+} from "lucide-react";
 import { api } from "@/services/api";
 import {
   Button,
@@ -105,11 +119,21 @@ function ServerRow({
     onError: (e) => setOut(e instanceof Error ? e.message : "error"),
   });
   const run = useMutation({
-    mutationFn: () => api.runServerCommand(projectId, server.id, cmd),
+    mutationFn: (command: string) => api.runServerCommand(projectId, server.id, command),
     onSuccess: (s) => setOut(s.last_result || "(no output)"),
     onError: (e) => setOut(e instanceof Error ? e.message : "error"),
   });
   const busy = action.isPending || run.isPending;
+
+  // Predefined one-click operations, executed via the same SSH run channel.
+  const quick: { label: string; icon: React.ReactNode; cmd: string }[] = [
+    { label: "Logs", icon: <FileText className="h-3.5 w-3.5" />, cmd: "docker logs --tail 120 pulse-agent 2>&1" },
+    { label: "Restart", icon: <RotateCw className="h-3.5 w-3.5" />, cmd: "docker restart pulse-agent && echo restarted" },
+    { label: "Containers", icon: <Boxes className="h-3.5 w-3.5" />, cmd: "docker ps --format 'table {{.Names}}\\t{{.Status}}\\t{{.Image}}'" },
+    { label: "Disk", icon: <HardDrive className="h-3.5 w-3.5" />, cmd: "df -h /" },
+    { label: "Memory", icon: <MemoryStick className="h-3.5 w-3.5" />, cmd: "free -h" },
+    { label: "Uptime", icon: <Clock className="h-3.5 w-3.5" />, cmd: "uptime && echo && uname -a" },
+  ];
 
   return (
     <div className="rounded-md border border-border p-3">
@@ -137,6 +161,22 @@ function ServerRow({
         </div>
       </div>
 
+      {/* Quick actions — one-click ops over SSH */}
+      <div className="mt-2 flex flex-wrap items-center gap-1.5">
+        {quick.map((q) => (
+          <Button
+            key={q.label}
+            variant="ghost"
+            size="sm"
+            disabled={busy}
+            onClick={() => run.mutate(q.cmd)}
+            title={q.cmd}
+          >
+            {q.icon} {q.label}
+          </Button>
+        ))}
+      </div>
+
       {/* Run arbitrary command */}
       <div className="mt-2 flex items-center gap-1.5">
         <Terminal className="h-3.5 w-3.5 text-fg-muted shrink-0" />
@@ -146,10 +186,10 @@ function ServerRow({
           placeholder="run a command on this server…"
           className="h-8 text-xs font-mono"
           onKeyDown={(e) => {
-            if (e.key === "Enter" && cmd && !busy) run.mutate();
+            if (e.key === "Enter" && cmd && !busy) run.mutate(cmd);
           }}
         />
-        <Button variant="outline" size="sm" disabled={busy || !cmd} onClick={() => run.mutate()}>
+        <Button variant="outline" size="sm" disabled={busy || !cmd} onClick={() => run.mutate(cmd)}>
           Run
         </Button>
       </div>
