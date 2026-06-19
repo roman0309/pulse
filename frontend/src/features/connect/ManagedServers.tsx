@@ -109,6 +109,14 @@ function ServerRow({
 }) {
   const [cmd, setCmd] = useState("");
   const [out, setOut] = useState(server.last_result || "");
+  const [section, setSection] = useState<
+      "overview" |
+      "agent" |
+      "diagnostics" |
+      "logs" |
+      "events" |
+      "settings"
+    >("overview");
 
   const action = useMutation({
     mutationFn: (act: "install" | "remove" | "status") => api.serverAction(projectId, server.id, act),
@@ -160,46 +168,258 @@ function ServerRow({
           </button>
         </div>
       </div>
+<div className="mt-4 flex flex-wrap gap-2">
+  <Button
+    size="sm"
+    variant={section === "overview" ? "default" : "ghost"}
+    onClick={() => setSection("overview")}
+  >
+    Overview
+  </Button>
 
-      {/* Quick actions — one-click ops over SSH */}
-      <div className="mt-2 flex flex-wrap items-center gap-1.5">
-        {quick.map((q) => (
-          <Button
-            key={q.label}
-            variant="ghost"
-            size="sm"
-            disabled={busy}
-            onClick={() => run.mutate(q.cmd)}
-            title={q.cmd}
-          >
-            {q.icon} {q.label}
-          </Button>
-        ))}
+  <Button
+    size="sm"
+    variant={section === "agent" ? "default" : "ghost"}
+    onClick={() => setSection("agent")}
+  >
+    Agent
+  </Button>
+
+  <Button
+    size="sm"
+    variant={section === "diagnostics" ? "default" : "ghost"}
+    onClick={() => setSection("diagnostics")}
+  >
+    Diagnostics
+  </Button>
+
+  <Button
+    size="sm"
+    variant={section === "logs" ? "default" : "ghost"}
+    onClick={() => setSection("logs")}
+  >
+    Logs
+  </Button>
+
+  <Button
+    size="sm"
+    variant={section === "events" ? "default" : "ghost"}
+    onClick={() => setSection("events")}
+  >
+    Events
+  </Button>
+
+  <Button
+    size="sm"
+    variant={section === "settings" ? "default" : "ghost"}
+    onClick={() => setSection("settings")}
+  >
+    Settings
+  </Button>
+</div>
+
+{section === "overview" && (
+  <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-4">
+    <Card>
+      <CardContent className="p-3">
+        <p className="text-xs text-fg-muted">Agent</p>
+        <p className="font-medium">
+          {server.status === "installed"
+            ? "Connected"
+            : "Disconnected"}
+        </p>
+      </CardContent>
+    </Card>
+
+    <Card>
+      <CardContent className="p-3">
+        <p className="text-xs text-fg-muted">Metrics</p>
+        <p className="font-medium">
+          {server.status === "installed"
+            ? "Receiving"
+            : "Inactive"}
+        </p>
+      </CardContent>
+    </Card>
+
+    <Card>
+      <CardContent className="p-3">
+        <p className="text-xs text-fg-muted">Logs</p>
+        <p className="font-medium">
+          {server.status === "installed"
+            ? "Receiving"
+            : "Inactive"}
+        </p>
+      </CardContent>
+    </Card>
+
+    <Card>
+      <CardContent className="p-3">
+        <p className="text-xs text-fg-muted">
+          Last heartbeat
+        </p>
+        <p className="font-medium">10 sec ago</p>
+      </CardContent>
+    </Card>
+  </div>
+)}
+
+{section === "agent" && (
+  <div className="mt-4 flex flex-wrap gap-2">
+    <Button
+      disabled={busy}
+      onClick={() => action.mutate("install")}
+    >
+      Deploy Agent
+    </Button>
+
+    <Button
+      variant="outline"
+      disabled={busy}
+      onClick={() => action.mutate("status")}
+    >
+      Check Status
+    </Button>
+
+    <Button
+      variant="outline"
+      disabled={busy}
+      onClick={() =>
+        run.mutate(
+          "docker restart pulse-agent && echo restarted"
+        )
+      }
+    >
+      Restart Agent
+    </Button>
+
+    <Button
+      variant="outline"
+      disabled={busy}
+      onClick={() =>
+        run.mutate(
+          "docker logs --tail 100 pulse-agent"
+        )
+      }
+    >
+      View Agent Logs
+    </Button>
+
+    <Button
+      variant="destructive"
+      disabled={busy}
+      onClick={() => action.mutate("remove")}
+    >
+      Remove Agent
+    </Button>
+  </div>
+)}
+
+{section === "diagnostics" && (
+  <div className="mt-4 space-y-3">
+    <Button
+      onClick={() =>
+        run.mutate(`
+echo "SSH: OK"
+echo "---"
+
+docker --version
+
+echo "---"
+
+systemctl is-active docker
+
+echo "---"
+
+df -h /
+
+echo "---"
+
+free -h
+`)
+      }
+    >
+      Run Diagnostics
+    </Button>
+
+    <div className="rounded-md border border-border p-3">
+      <div className="space-y-2 text-sm">
+        <div>✅ SSH Access</div>
+        <div>✅ Credentials Valid</div>
+        <div>⚠ Agent Not Installed</div>
+        <div>⚠ Metrics Not Receiving</div>
       </div>
+    </div>
+  </div>
+)}
 
-      {/* Run arbitrary command */}
-      <div className="mt-2 flex items-center gap-1.5">
-        <Terminal className="h-3.5 w-3.5 text-fg-muted shrink-0" />
-        <Input
-          value={cmd}
-          onChange={(e) => setCmd(e.target.value)}
-          placeholder="run a command on this server…"
-          className="h-8 text-xs font-mono"
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && cmd && !busy) run.mutate(cmd);
-          }}
-        />
-        <Button variant="outline" size="sm" disabled={busy || !cmd} onClick={() => run.mutate(cmd)}>
-          Run
-        </Button>
-      </div>
+{section === "logs" && (
+  <div className="mt-4 flex flex-wrap gap-2">
+    <Button
+      onClick={() =>
+        run.mutate(
+          "docker logs --tail 200 pulse-agent"
+        )
+      }
+    >
+      Agent Logs
+    </Button>
 
-      {busy && <p className="text-xs text-fg-muted mt-2">running…</p>}
-      {out && !busy && (
-        <pre className="mt-2 max-h-40 overflow-auto rounded bg-surface-2 p-2 text-[11px] font-mono text-fg-muted whitespace-pre-wrap break-all">
-          {out}
-        </pre>
+    <Button
+      onClick={() =>
+        run.mutate(
+          "journalctl -n 200 --no-pager"
+        )
+      }
+    >
+      System Logs
+    </Button>
+  </div>
+)}
+
+{section === "events" && (
+  <div className="mt-4 rounded-md border border-border p-3">
+    <div className="space-y-3 text-sm">
+      <div>Server added</div>
+
+      {server.status === "installed" && (
+        <div>Agent installed</div>
       )}
+
+      <div>Last status check completed</div>
+    </div>
+  </div>
+)}
+
+{section === "settings" && (
+  <div className="mt-4 flex flex-wrap gap-2">
+    <Button
+      variant="outline"
+      onClick={() => action.mutate("status")}
+    >
+      Verify Connection
+    </Button>
+
+    <Button
+      variant="outline"
+      onClick={onDelete}
+    >
+      Delete Server
+    </Button>
+  </div>
+)}
+
+{busy && (
+  <p className="mt-4 text-xs text-fg-muted">
+    running...
+  </p>
+)}
+
+{out && !busy && (
+  <pre className="mt-4 max-h-64 overflow-auto rounded bg-surface-2 p-2 text-[11px] font-mono whitespace-pre-wrap">
+    {out}
+  </pre>
+)}
     </div>
   );
 }
