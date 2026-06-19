@@ -171,7 +171,7 @@ function ServerRow({
 <div className="mt-4 flex flex-wrap gap-2">
   <Button
     size="sm"
-    variant={section === "overview" ? "default" : "ghost"}
+    variant={section === "overview" ? "primary" : "ghost"}
     onClick={() => setSection("overview")}
   >
     Overview
@@ -179,7 +179,7 @@ function ServerRow({
 
   <Button
     size="sm"
-    variant={section === "agent" ? "default" : "ghost"}
+    variant={section === "agent" ? "primary" : "ghost"}
     onClick={() => setSection("agent")}
   >
     Agent
@@ -187,7 +187,7 @@ function ServerRow({
 
   <Button
     size="sm"
-    variant={section === "diagnostics" ? "default" : "ghost"}
+    variant={section === "diagnostics" ? "primary" : "ghost"}
     onClick={() => setSection("diagnostics")}
   >
     Diagnostics
@@ -195,7 +195,7 @@ function ServerRow({
 
   <Button
     size="sm"
-    variant={section === "logs" ? "default" : "ghost"}
+    variant={section === "logs" ? "primary" : "ghost"}
     onClick={() => setSection("logs")}
   >
     Logs
@@ -203,7 +203,7 @@ function ServerRow({
 
   <Button
     size="sm"
-    variant={section === "events" ? "default" : "ghost"}
+    variant={section === "events" ? "primary" : "ghost"}
     onClick={() => setSection("events")}
   >
     Events
@@ -211,7 +211,7 @@ function ServerRow({
 
   <Button
     size="sm"
-    variant={section === "settings" ? "default" : "ghost"}
+    variant={section === "settings" ? "primary" : "ghost"}
     onClick={() => setSection("settings")}
   >
     Settings
@@ -306,7 +306,7 @@ function ServerRow({
     </Button>
 
     <Button
-      variant="destructive"
+      variant="danger"
       disabled={busy}
       onClick={() => action.mutate("remove")}
     >
@@ -420,9 +420,6 @@ free -h
     {out}
   </pre>
 )}
-    </div>
-  );
-}
 
 function AddServerModal({
   open,
