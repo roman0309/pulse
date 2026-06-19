@@ -7,8 +7,6 @@ import {
   Trash2,
   Copy,
   Check,
-  ServerCog,
-  Boxes,
   Activity,
   CheckCircle2,
   AlertTriangle,
@@ -35,6 +33,25 @@ import type { IngestKey } from "@/types";
 // same host. In production the operator sets PUBLIC_INGEST_URL (served via
 // /api/v1/meta) so remote agents get the externally reachable address.
 const fallbackBase = `${location.protocol}//${location.hostname}:8080`;
+
+// Step 1: create a dedicated, revocable user + SSH key on the target server.
+const PREP_COMMANDS = `# Run on your server as root. Creates a dedicated 'pulse' user + SSH key.
+useradd -m -s /bin/bash pulse
+usermod -aG docker pulse
+mkdir -p /home/pulse/.ssh && chmod 700 /home/pulse/.ssh
+ssh-keygen -t ed25519 -f /home/pulse/.ssh/pulse_key -N "" -C "pulse"
+cat /home/pulse/.ssh/pulse_key.pub >> /home/pulse/.ssh/authorized_keys
+chmod 600 /home/pulse/.ssh/authorized_keys && chown -R pulse:pulse /home/pulse/.ssh
+echo "----- copy the PRIVATE KEY below into Pulse -----"
+cat /home/pulse/.ssh/pulse_key`;
+
+function StepBadge({ n }: { n: number }) {
+  return (
+    <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-primary/15 text-[11px] font-semibold text-primary">
+      {n}
+    </span>
+  );
+}
 
 export function ConnectPage() {
   const { projectId } = useParams();
@@ -77,133 +94,134 @@ export function ConnectPage() {
     <div>
       <PageHeader
         title="Connect a server"
-        description="Install an agent on your servers — metrics and services appear here automatically"
-        actions={
-          <Button size="sm" onClick={() => setCreateOpen(true)}>
-            <Plus className="h-4 w-4" /> New ingest key
-          </Button>
-        }
+        description="Add your server once, then install the agent and manage everything from here."
       />
-
-      {/* Live connection status */}
-      {hasKeys && (
-        <div
-          className={`flex items-center gap-2 rounded-lg border px-4 py-3 mb-4 text-sm ${
-            liveNow
-              ? "border-success/30 bg-success/10 text-success"
-              : everUsed
-                ? "border-border bg-surface text-fg-muted"
-                : "border-warning/30 bg-warning/10 text-warning"
-          }`}
-        >
-          {liveNow ? (
-            <>
-              <CheckCircle2 className="h-4 w-4" />
-              <span className="text-fg">
-                Connected — receiving data from your server
-              </span>
-            </>
-          ) : everUsed ? (
-            <>
-              <Activity className="h-4 w-4" />
-              <span>Last data received {relativeTime(new Date(lastUsedMs))}</span>
-            </>
-          ) : (
-            <>
-              <Loader2 className="h-4 w-4 animate-spin" />
-              <span>
-                Waiting for first data… run the command below on your server.
-              </span>
-            </>
-          )}
-        </div>
-      )}
 
       {/* Local-address warning */}
       {isLocalEndpoint && (
         <div className="flex items-start gap-2 rounded-lg border border-warning/30 bg-warning/10 px-4 py-3 mb-6 text-sm text-warning">
           <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
           <span>
-            The ingest address is <code className="font-mono">{endpoint}</code> — a
+            Pulse's ingest address is <code className="font-mono">{endpoint}</code> — a
             local address that <strong>remote servers can't reach</strong>. Set{" "}
             <code className="font-mono">PUBLIC_INGEST_URL</code> to your public Pulse
-            domain so the commands below work from anywhere.
+            domain (or Tailscale name) so agents can reach it.
           </span>
         </div>
       )}
 
-      {/* How it works */}
-      <div className="grid sm:grid-cols-3 gap-3 mb-6">
-        <Step n={1} icon={<KeyRound className="h-4 w-4" />} title="Create a key">
-          One key per project. It binds a server to this project.
-        </Step>
-        <Step n={2} icon={<ServerCog className="h-4 w-4" />} title="Run the agent">
-          Paste the command on each server. No code changes needed.
-        </Step>
-        <Step n={3} icon={<Boxes className="h-4 w-4" />} title="See it live">
-          Services auto-appear; metrics stream into the dashboard.
-        </Step>
-      </div>
-
-      {/* Keys */}
+      {/* Step 1 — prepare the server */}
       <Card className="mb-6">
         <CardHeader>
-          <CardTitle>Ingest keys</CardTitle>
+          <CardTitle className="flex items-center gap-2">
+            <StepBadge n={1} /> Prepare your server
+          </CardTitle>
         </CardHeader>
         <CardContent>
-          {keys.isLoading ? (
-            <Spinner />
-          ) : keys.data && keys.data.length > 0 ? (
-            <div className="divide-y divide-border">
-              {keys.data.map((k) => (
-                <div key={k.id} className="flex items-center justify-between py-2.5">
-                  <div className="flex items-center gap-3">
-                    <KeyRound className="h-4 w-4 text-fg-muted" />
-                    <div>
-                      <p className="text-sm font-medium text-fg">{k.name}</p>
-                      <p className="text-xs font-mono text-fg-muted">
-                        {k.prefix}••••••••
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <Badge tone={k.last_used_at ? "success" : "muted"}>
-                      {k.last_used_at ? `seen ${relativeTime(k.last_used_at)}` : "never used"}
-                    </Badge>
-                    <button
-                      onClick={() => del.mutate(k.id)}
-                      className="text-fg-muted hover:text-danger transition"
-                      title="Revoke"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <EmptyState
-              icon={<KeyRound className="h-7 w-7" />}
-              title="No ingest keys yet"
-              description="Create one to connect your first server."
-            />
-          )}
+          <p className="text-sm text-fg-muted mb-3">
+            Create a dedicated, revocable <code className="font-mono">pulse</code> user with its
+            own SSH key. Run this on your server as <strong>root</strong>, then copy the private
+            key it prints at the end.
+          </p>
+          <CopyBox value={PREP_COMMANDS} />
+          <p className="text-xs text-fg-muted mt-2">
+            After copying the key into Pulse, remove it from the server:{" "}
+            <code className="font-mono">rm /home/pulse/.ssh/pulse_key</code>
+          </p>
         </CardContent>
       </Card>
 
-      {/* Live agents via the control channel (no SSH/VPN) */}
-      <ControlAgents projectId={projectId!} />
-
-      {/* Auto-managed servers (Tailscale SSH) — alternative */}
+      {/* Steps 2 & 3 — add + manage */}
+      <div className="flex items-center gap-2 flex-wrap text-sm text-fg-muted mb-2">
+        <StepBadge n={2} /> Add the server below (user <code className="font-mono">pulse</code>, Private key)
+        <span className="mx-1">→</span>
+        <StepBadge n={3} /> click <strong>Install</strong>, then manage with the buttons.
+      </div>
       <ManagedServers projectId={projectId!} />
 
-      {/* Setup instructions */}
-      <SetupInstructions
-        token={token}
-        endpoint={endpoint}
-        agentImage={agentImage}
-        highlight={!!created}
-      />
+      {/* Other ways to connect */}
+      <details className="rounded-lg border border-border bg-surface">
+        <summary className="cursor-pointer select-none px-4 py-3 text-sm text-fg-muted hover:text-fg">
+          Other ways to connect — manual install, live control channel, OTel / Prometheus
+        </summary>
+        <div className="space-y-6 p-4 pt-0">
+          {hasKeys && (
+            <div
+              className={`flex items-center gap-2 rounded-lg border px-4 py-3 text-sm ${
+                liveNow
+                  ? "border-success/30 bg-success/10 text-success"
+                  : everUsed
+                    ? "border-border bg-surface text-fg-muted"
+                    : "border-warning/30 bg-warning/10 text-warning"
+              }`}
+            >
+              {liveNow ? (
+                <>
+                  <CheckCircle2 className="h-4 w-4" />
+                  <span className="text-fg">Connected — receiving data</span>
+                </>
+              ) : everUsed ? (
+                <>
+                  <Activity className="h-4 w-4" />
+                  <span>Last data received {relativeTime(new Date(lastUsedMs))}</span>
+                </>
+              ) : (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <span>Waiting for first data…</span>
+                </>
+              )}
+            </div>
+          )}
+
+          <ControlAgents projectId={projectId!} />
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between">
+              <CardTitle>Ingest keys</CardTitle>
+              <Button size="sm" variant="outline" onClick={() => setCreateOpen(true)}>
+                <Plus className="h-4 w-4" /> New key
+              </Button>
+            </CardHeader>
+            <CardContent>
+              {keys.isLoading ? (
+                <Spinner />
+              ) : keys.data && keys.data.length > 0 ? (
+                <div className="divide-y divide-border">
+                  {keys.data.map((k) => (
+                    <div key={k.id} className="flex items-center justify-between py-2.5">
+                      <div className="flex items-center gap-3">
+                        <KeyRound className="h-4 w-4 text-fg-muted" />
+                        <div>
+                          <p className="text-sm font-medium text-fg">{k.name}</p>
+                          <p className="text-xs font-mono text-fg-muted">{k.prefix}••••••••</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <Badge tone={k.last_used_at ? "success" : "muted"}>
+                          {k.last_used_at ? `seen ${relativeTime(k.last_used_at)}` : "never used"}
+                        </Badge>
+                        <button onClick={() => del.mutate(k.id)} className="text-fg-muted hover:text-danger transition" title="Revoke">
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <EmptyState icon={<KeyRound className="h-7 w-7" />} title="No ingest keys yet" description="Create one for manual / agentless setups." />
+              )}
+            </CardContent>
+          </Card>
+
+          <SetupInstructions
+            token={token}
+            endpoint={endpoint}
+            agentImage={agentImage}
+            highlight={!!created}
+          />
+        </div>
+      </details>
 
       {/* Create key modal */}
       <CreateKeyModal
@@ -235,30 +253,6 @@ export function ConnectPage() {
   );
 }
 
-function Step({
-  n,
-  icon,
-  title,
-  children,
-}: {
-  n: number;
-  icon: React.ReactNode;
-  title: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <Card className="p-4">
-      <div className="flex items-center gap-2 text-fg">
-        <span className="flex h-5 w-5 items-center justify-center rounded-full bg-primary/15 text-[11px] font-semibold text-primary">
-          {n}
-        </span>
-        {icon}
-        <span className="text-sm font-medium">{title}</span>
-      </div>
-      <p className="text-xs text-fg-muted mt-2">{children}</p>
-    </Card>
-  );
-}
 
 const TABS = ["Host metrics", "App metrics", "App (zero-code)", "Prometheus"] as const;
 type Tab = (typeof TABS)[number];

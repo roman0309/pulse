@@ -179,8 +179,8 @@ function AddServerModal({
     name: "",
     host: "",
     port: "22",
-    user: "root",
-    auth_method: "password",
+    user: "pulse",
+    auth_method: "key",
     secret: "",
   });
   const set = (k: string, v: string) => setF((p) => ({ ...p, [k]: v }));
