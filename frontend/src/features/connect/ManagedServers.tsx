@@ -48,8 +48,6 @@ const statusTone: Record<string, "success" | "warning" | "danger" | "muted"> = {
 // Diagnostic one-liners run over the same SSH channel. All read-only / safe.
 const QUICK: { label: string; icon: React.ReactNode; cmd: string }[] = [
   { label: "Connection", icon: <Network className="h-3.5 w-3.5" />, cmd: `whoami && hostname && echo "CONNECTED"` },
-  { label: "Agent logs", icon: <FileText className="h-3.5 w-3.5" />, cmd: `docker logs --tail 150 pulse-agent 2>&1 || echo "pulse-agent not found"` },
-  { label: "Beyla logs", icon: <FileText className="h-3.5 w-3.5" />, cmd: `docker logs --tail 150 pulse-beyla 2>&1 || echo "pulse-beyla not found"` },
   { label: "Containers", icon: <Boxes className="h-3.5 w-3.5" />, cmd: `docker ps -a --format 'table {{.Names}}\\t{{.Status}}\\t{{.Image}}'` },
   { label: "Disk", icon: <HardDrive className="h-3.5 w-3.5" />, cmd: "df -h" },
   { label: "Memory", icon: <MemoryStick className="h-3.5 w-3.5" />, cmd: "free -h" },
@@ -165,7 +163,12 @@ function ServerRow({
     onSuccess: (s) => onResult(s.last_result || "(no output)", true),
     onError: (e) => onResult(errText(e)),
   });
-  const busy = action.isPending || run.isPending || beyla.isPending;
+  const beylaRemove = useMutation({
+    mutationFn: () => api.removeBeyla(projectId, server.id),
+    onSuccess: (s) => onResult(s.last_result || "(no output)", true),
+    onError: (e) => onResult(errText(e)),
+  });
+  const busy = action.isPending || run.isPending || beyla.isPending || beylaRemove.isPending;
 
   function act(lbl: string, a: "install" | "remove" | "status") {
     setLabel(lbl);
@@ -177,6 +180,18 @@ function ServerRow({
     setLabel(lbl);
     setOpen(true);
     run.mutate(command);
+  }
+  function installBeyla() {
+    if (!ports.trim()) return;
+    setLabel("Install app metrics (Beyla)");
+    setOpen(true);
+    beyla.mutate(ports);
+  }
+  function removeBeyla() {
+    if (!confirm("Remove the app-metrics agent (pulse-beyla)?")) return;
+    setLabel("Remove app metrics (Beyla)");
+    setOpen(true);
+    beylaRemove.mutate();
   }
   function copyOut() {
     navigator.clipboard.writeText(out).then(() => {
@@ -200,15 +215,12 @@ function ServerRow({
           </div>
         </button>
         <div className="flex shrink-0 items-center gap-1.5">
-          <Button variant="outline" size="sm" disabled={busy} onClick={() => act("Install / update agent", "install")}>
-            <Download className="h-3.5 w-3.5" /> Install
-          </Button>
-          <Button variant="ghost" size="sm" disabled={busy} onClick={() => act("Status", "status")} title="Check status">
-            <RefreshCw className={cn("h-3.5 w-3.5", busy && "animate-spin")} />
+          <Button variant="outline" size="sm" disabled={busy} onClick={() => act("Status", "status")} title="Check containers (pulse-agent, pulse-beyla)">
+            <RefreshCw className={cn("h-3.5 w-3.5", busy && "animate-spin")} /> Status
           </Button>
           <button
             onClick={() => {
-              if (confirm(`Delete server "${server.name}"? This also revokes its ingest key.`)) onDelete();
+              if (confirm(`Delete server "${server.name}"? This removes it from Pulse and revokes its ingest keys.`)) onDelete();
             }}
             className="rounded p-1.5 text-fg-muted transition hover:bg-surface-2 hover:text-danger"
             title="Delete server"
@@ -221,52 +233,66 @@ function ServerRow({
       {/* Management console */}
       {open && (
         <div className="space-y-4 border-t border-border p-3">
-          {/* Agent lifecycle */}
-          <Section title="Agent">
-            <Button variant="primary" size="sm" disabled={busy} onClick={() => act("Install / update agent", "install")}>
-              <Download className="h-3.5 w-3.5" /> Install / update
-            </Button>
-            <Button variant="outline" size="sm" disabled={busy} onClick={() => exec("Restart agent", "docker restart pulse-agent && echo restarted")}>
-              <RotateCw className="h-3.5 w-3.5" /> Restart
-            </Button>
-            <Button variant="outline" size="sm" disabled={busy} onClick={() => act("Status", "status")}>
-              <RefreshCw className="h-3.5 w-3.5" /> Status
-            </Button>
-            <Button
-              variant="danger"
-              size="sm"
-              disabled={busy}
-              onClick={() => {
-                if (confirm("Remove the agent (and Beyla) from this server?")) act("Remove agent", "remove");
-              }}
+          {/* Two independent components, each with its own lifecycle */}
+          <div className="grid gap-3 md:grid-cols-2">
+            {/* Host agent */}
+            <CompCard
+              icon={<ServerCog className="h-4 w-4" />}
+              title="Host agent"
+              desc="CPU · memory · disk · network"
             >
-              <StopCircle className="h-3.5 w-3.5" /> Remove agent
-            </Button>
-          </Section>
+              <Button variant="primary" size="sm" disabled={busy} onClick={() => act("Install / update host agent", "install")}>
+                <Download className="h-3.5 w-3.5" /> Install / update
+              </Button>
+              <Button variant="ghost" size="sm" disabled={busy} onClick={() => exec("Restart host agent", "docker restart pulse-agent 2>&1 || echo 'pulse-agent not found'")}>
+                <RotateCw className="h-3.5 w-3.5" /> Restart
+              </Button>
+              <Button variant="ghost" size="sm" disabled={busy} onClick={() => exec("Host agent logs", "docker logs --tail 200 pulse-agent 2>&1 || echo 'pulse-agent not found'")}>
+                <FileText className="h-3.5 w-3.5" /> Logs
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                disabled={busy}
+                className="text-danger hover:text-danger"
+                onClick={() => {
+                  if (confirm("Remove the host agent (pulse-agent)?")) act("Remove host agent", "remove");
+                }}
+              >
+                <StopCircle className="h-3.5 w-3.5" /> Remove
+              </Button>
+            </CompCard>
 
-          {/* Zero-code app metrics via Beyla (eBPF) */}
-          <Section title="App metrics (Beyla · zero-code, no code changes)">
-            <Input
-              value={ports}
-              onChange={(e) => setPorts(e.target.value)}
-              placeholder="8080,8083,8084"
-              title="App ports to instrument (comma-separated)"
-              className="h-8 w-44 font-mono text-xs"
-            />
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={busy || !ports.trim()}
-              onClick={() => {
-                setLabel("Install app metrics (Beyla)");
-                setOpen(true);
-                beyla.mutate(ports);
-              }}
+            {/* App metrics (Beyla, zero-code) */}
+            <CompCard
+              icon={<Gauge className="h-4 w-4" />}
+              title="App metrics — Beyla"
+              desc="zero-code RED metrics, no app changes"
             >
-              <Gauge className="h-3.5 w-3.5" /> Install app metrics
-            </Button>
-            <span className="text-xs text-fg-muted">deploys <code className="font-mono">pulse-beyla</code> for the listed ports</span>
-          </Section>
+              <div className="flex w-full items-center gap-1.5">
+                <Input
+                  value={ports}
+                  onChange={(e) => setPorts(e.target.value)}
+                  placeholder="8080,8083,8084,8085"
+                  title="App ports to instrument (comma-separated or a range like 8080-8090)"
+                  className="h-8 flex-1 font-mono text-xs"
+                />
+                <span className="shrink-0 text-[11px] text-fg-muted">ports</span>
+              </div>
+              <Button variant="primary" size="sm" disabled={busy || !ports.trim()} onClick={installBeyla}>
+                <Download className="h-3.5 w-3.5" /> Install / update
+              </Button>
+              <Button variant="ghost" size="sm" disabled={busy} onClick={() => exec("Restart Beyla", "docker restart pulse-beyla 2>&1 || echo 'pulse-beyla not found'")}>
+                <RotateCw className="h-3.5 w-3.5" /> Restart
+              </Button>
+              <Button variant="ghost" size="sm" disabled={busy} onClick={() => exec("Beyla logs", "docker logs --tail 200 pulse-beyla 2>&1 || echo 'pulse-beyla not found'")}>
+                <FileText className="h-3.5 w-3.5" /> Logs
+              </Button>
+              <Button variant="ghost" size="sm" disabled={busy} className="text-danger hover:text-danger" onClick={removeBeyla}>
+                <StopCircle className="h-3.5 w-3.5" /> Remove
+              </Button>
+            </CompCard>
+          </div>
 
           {/* Diagnostics */}
           <Section title="Diagnostics">
@@ -336,6 +362,33 @@ function Section({ title, children }: { title: string; children: React.ReactNode
     <div>
       <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-fg-muted">{title}</p>
       <div className="flex flex-wrap items-center gap-1.5">{children}</div>
+    </div>
+  );
+}
+
+// CompCard groups one server component (host agent / Beyla) with its own
+// description and a row of lifecycle actions.
+function CompCard({
+  icon,
+  title,
+  desc,
+  children,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  desc: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="rounded-md border border-border bg-surface-2/40 p-3">
+      <div className="flex items-start gap-2">
+        <span className="mt-0.5 text-fg-muted">{icon}</span>
+        <div className="min-w-0">
+          <p className="text-sm font-medium text-fg">{title}</p>
+          <p className="text-xs text-fg-muted">{desc}</p>
+        </div>
+      </div>
+      <div className="mt-2.5 flex flex-wrap items-center gap-1.5">{children}</div>
     </div>
   );
 }

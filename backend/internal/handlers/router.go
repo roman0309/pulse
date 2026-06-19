@@ -115,6 +115,7 @@ func NewRouter(
 			p.DELETE("/servers/:serverId", core.DeleteServer)
 			p.POST("/servers/:serverId/install", core.InstallAgent)
 			p.POST("/servers/:serverId/beyla", core.InstallBeyla)
+			p.POST("/servers/:serverId/beyla/remove", core.RemoveBeyla)
 			p.POST("/servers/:serverId/remove", core.RemoveAgent)
 			p.POST("/servers/:serverId/status", core.ServerStatus)
 			p.POST("/servers/:serverId/run", core.RunServerCommand)

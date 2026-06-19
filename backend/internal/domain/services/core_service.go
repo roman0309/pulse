@@ -233,7 +233,8 @@ func (s *CoreService) InstallAgent(ctx context.Context, userID, serverID uuid.UU
 	return srv, nil
 }
 
-// RemoveAgent stops the agent on the server and revokes its ingest key.
+// RemoveAgent stops the host agent on the server and revokes its ingest key.
+// The app-metrics agent (Beyla) has its own lifecycle — see RemoveBeyla.
 func (s *CoreService) RemoveAgent(ctx context.Context, userID, serverID uuid.UUID) (*entities.ManagedServer, error) {
 	srv, err := s.serverForUser(ctx, userID, serverID)
 	if err != nil {
@@ -243,15 +244,11 @@ func (s *CoreService) RemoveAgent(ctx context.Context, userID, serverID uuid.UUI
 	if err != nil {
 		return nil, err
 	}
-	out, hostKey, runErr := s.Exec.Run(ctx, conn, "docker rm -f pulse-agent pulse-beyla 2>/dev/null; echo removed")
+	out, hostKey, runErr := s.Exec.Run(ctx, conn, "docker rm -f pulse-agent 2>/dev/null; echo removed")
 	s.pinHostKey(srv, hostKey)
 	if srv.IngestKeyID != nil {
 		_ = s.IngestKeys.Delete(ctx, srv.ProjectID, *srv.IngestKeyID)
 		srv.IngestKeyID = nil
-	}
-	if srv.BeylaKeyID != nil {
-		_ = s.IngestKeys.Delete(ctx, srv.ProjectID, *srv.BeylaKeyID)
-		srv.BeylaKeyID = nil
 	}
 	srv.LastResult = truncate(out, 2000)
 	srv.Status = "removed"
@@ -261,6 +258,31 @@ func (s *CoreService) RemoveAgent(ctx context.Context, userID, serverID uuid.UUI
 	}
 	_ = s.Servers.Update(ctx, srv)
 	s.audit(ctx, srv.ProjectID, userID, &srv.ID, "remove", "", runErr == nil)
+	return srv, nil
+}
+
+// RemoveBeyla stops the zero-code app-metrics agent and revokes its ingest key.
+func (s *CoreService) RemoveBeyla(ctx context.Context, userID, serverID uuid.UUID) (*entities.ManagedServer, error) {
+	srv, err := s.serverForUser(ctx, userID, serverID)
+	if err != nil {
+		return nil, err
+	}
+	conn, err := s.connFor(srv)
+	if err != nil {
+		return nil, err
+	}
+	out, hostKey, runErr := s.Exec.Run(ctx, conn, "docker rm -f pulse-beyla 2>/dev/null; echo removed")
+	s.pinHostKey(srv, hostKey)
+	if srv.BeylaKeyID != nil {
+		_ = s.IngestKeys.Delete(ctx, srv.ProjectID, *srv.BeylaKeyID)
+		srv.BeylaKeyID = nil
+	}
+	srv.LastResult = truncate(out, 2000)
+	if runErr != nil {
+		srv.LastResult = truncate(out+"\n"+runErr.Error(), 2000)
+	}
+	_ = s.Servers.Update(ctx, srv)
+	s.audit(ctx, srv.ProjectID, userID, &srv.ID, "remove_beyla", "", runErr == nil)
 	return srv, nil
 }
 

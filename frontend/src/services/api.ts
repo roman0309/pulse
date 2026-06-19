@@ -305,6 +305,10 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ ports }),
     }),
+  removeBeyla: (projectId: string, serverId: string) =>
+    request<ManagedServer>(`/projects/${projectId}/servers/${serverId}/beyla/remove`, {
+      method: "POST",
+    }),
   runServerCommand: (projectId: string, serverId: string, command: string) =>
     request<ManagedServer>(`/projects/${projectId}/servers/${serverId}/run`, {
       method: "POST",

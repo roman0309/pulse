@@ -548,6 +548,7 @@ func (h *CoreHandler) serverAction(c *gin.Context, fn func(ctx context.Context, 
 
 func (h *CoreHandler) InstallAgent(c *gin.Context) { h.serverAction(c, h.core.InstallAgent) }
 func (h *CoreHandler) RemoveAgent(c *gin.Context)  { h.serverAction(c, h.core.RemoveAgent) }
+func (h *CoreHandler) RemoveBeyla(c *gin.Context)  { h.serverAction(c, h.core.RemoveBeyla) }
 func (h *CoreHandler) ServerStatus(c *gin.Context) { h.serverAction(c, h.core.CheckStatus) }
 
 // InstallBeyla deploys the zero-code app-metrics agent on the server.
