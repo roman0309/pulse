@@ -550,6 +550,24 @@ func (h *CoreHandler) InstallAgent(c *gin.Context) { h.serverAction(c, h.core.In
 func (h *CoreHandler) RemoveAgent(c *gin.Context)  { h.serverAction(c, h.core.RemoveAgent) }
 func (h *CoreHandler) ServerStatus(c *gin.Context) { h.serverAction(c, h.core.CheckStatus) }
 
+// InstallBeyla deploys the zero-code app-metrics agent on the server.
+func (h *CoreHandler) InstallBeyla(c *gin.Context) {
+	serverID, ok := parseUUIDParam(c, "serverId")
+	if !ok {
+		return
+	}
+	var req struct {
+		Ports string `json:"ports" binding:"max=200"`
+	}
+	_ = c.ShouldBindJSON(&req) // ports optional; defaults to 8080 in the service
+	srv, err := h.core.InstallBeyla(c.Request.Context(), middleware.UserID(c), serverID, req.Ports)
+	if err != nil {
+		handleDomainError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, srv)
+}
+
 // ---------- Alert rules ----------
 
 func (h *CoreHandler) ListAlertRules(c *gin.Context) {

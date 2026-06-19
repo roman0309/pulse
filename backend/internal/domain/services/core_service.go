@@ -189,6 +189,9 @@ func (s *CoreService) DeleteServer(ctx context.Context, userID, projectID, serve
 	if srv.IngestKeyID != nil {
 		_ = s.IngestKeys.Delete(ctx, projectID, *srv.IngestKeyID)
 	}
+	if srv.BeylaKeyID != nil {
+		_ = s.IngestKeys.Delete(ctx, projectID, *srv.BeylaKeyID)
+	}
 	s.audit(ctx, projectID, userID, &serverID, "delete_server", srv.SSHTarget, true)
 	return s.Servers.Delete(ctx, projectID, serverID)
 }
@@ -246,6 +249,10 @@ func (s *CoreService) RemoveAgent(ctx context.Context, userID, serverID uuid.UUI
 		_ = s.IngestKeys.Delete(ctx, srv.ProjectID, *srv.IngestKeyID)
 		srv.IngestKeyID = nil
 	}
+	if srv.BeylaKeyID != nil {
+		_ = s.IngestKeys.Delete(ctx, srv.ProjectID, *srv.BeylaKeyID)
+		srv.BeylaKeyID = nil
+	}
 	srv.LastResult = truncate(out, 2000)
 	srv.Status = "removed"
 	if runErr != nil {
@@ -276,6 +283,58 @@ func (s *CoreService) CheckStatus(ctx context.Context, userID, serverID uuid.UUI
 	}
 	_ = s.Servers.Update(ctx, srv)
 	s.audit(ctx, srv.ProjectID, userID, &srv.ID, "status", "", runErr == nil)
+	return srv, nil
+}
+
+var beylaPortsRe = regexp.MustCompile(`[^0-9,\-]`)
+
+// InstallBeyla deploys the zero-code app-metrics agent (Beyla, eBPF) on the
+// server, instrumenting the given comma-separated ports. It mints a dedicated
+// ingest key and intentionally does NOT pin OTEL_SERVICE_NAME, so Beyla names
+// each service by its executable — correct for multi-service apps.
+func (s *CoreService) InstallBeyla(ctx context.Context, userID, serverID uuid.UUID, ports string) (*entities.ManagedServer, error) {
+	srv, err := s.serverForUser(ctx, userID, serverID)
+	if err != nil {
+		return nil, err
+	}
+	conn, err := s.connFor(srv)
+	if err != nil {
+		return nil, err
+	}
+	ports = beylaPortsRe.ReplaceAllString(ports, "")
+	if ports == "" {
+		ports = "8080"
+	}
+	// Rotate a dedicated key so repeated installs don't pile up keys.
+	if srv.BeylaKeyID != nil {
+		_ = s.IngestKeys.Delete(ctx, srv.ProjectID, *srv.BeylaKeyID)
+		srv.BeylaKeyID = nil
+	}
+	key, err := s.CreateIngestKey(ctx, userID, srv.ProjectID, srv.Name+" app")
+	if err != nil {
+		return nil, err
+	}
+	endpoint := s.PublicIngestURL
+	if endpoint == "" {
+		endpoint = "http://localhost:8080"
+	}
+	cmd := fmt.Sprintf("docker rm -f pulse-beyla 2>/dev/null; "+
+		"docker run -d --name pulse-beyla --restart unless-stopped --privileged --pid=host "+
+		"-e BEYLA_OPEN_PORT=%s "+
+		"-e OTEL_EXPORTER_OTLP_ENDPOINT=%s/otlp "+
+		"-e OTEL_EXPORTER_OTLP_HEADERS=X-Pulse-Key=%s "+
+		"-e OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE=delta "+
+		"grafana/beyla:latest",
+		ports, endpoint, key.Token)
+	out, hostKey, runErr := s.Exec.Run(ctx, conn, cmd)
+	s.pinHostKey(srv, hostKey)
+	srv.BeylaKeyID = &key.ID
+	srv.LastResult = truncate(out, 2000)
+	if runErr != nil {
+		srv.LastResult = truncate(out+"\n"+runErr.Error(), 2000)
+	}
+	_ = s.Servers.Update(ctx, srv)
+	s.audit(ctx, srv.ProjectID, userID, &srv.ID, "install_beyla", "ports="+ports, runErr == nil)
 	return srv, nil
 }
 

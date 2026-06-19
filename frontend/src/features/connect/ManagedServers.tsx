@@ -17,6 +17,7 @@ import {
   Cpu,
   Activity,
   Network,
+  Gauge,
   Copy,
   Check,
   X,
@@ -136,35 +137,35 @@ function ServerRow({
 }) {
   const [open, setOpen] = useState(false);
   const [cmd, setCmd] = useState("");
+  const [ports, setPorts] = useState("8080");
   const [out, setOut] = useState(server.last_result || "");
   const [label, setLabel] = useState(server.last_result ? "Last result" : "");
   const [at, setAt] = useState<Date | null>(null);
   const [copied, setCopied] = useState(false);
 
+  const onResult = (text: string, refetch = false) => {
+    setOut(text);
+    setAt(new Date());
+    if (refetch) onChange();
+  };
+  const errText = (e: unknown) => (e instanceof Error ? e.message : "error");
+
   const action = useMutation({
     mutationFn: (act: "install" | "remove" | "status") => api.serverAction(projectId, server.id, act),
-    onSuccess: (s) => {
-      setOut(s.last_result || s.status);
-      setAt(new Date());
-      onChange();
-    },
-    onError: (e) => {
-      setOut(e instanceof Error ? e.message : "error");
-      setAt(new Date());
-    },
+    onSuccess: (s) => onResult(s.last_result || s.status, true),
+    onError: (e) => onResult(errText(e)),
   });
   const run = useMutation({
     mutationFn: (command: string) => api.runServerCommand(projectId, server.id, command),
-    onSuccess: (s) => {
-      setOut(s.last_result || "(no output)");
-      setAt(new Date());
-    },
-    onError: (e) => {
-      setOut(e instanceof Error ? e.message : "error");
-      setAt(new Date());
-    },
+    onSuccess: (s) => onResult(s.last_result || "(no output)"),
+    onError: (e) => onResult(errText(e)),
   });
-  const busy = action.isPending || run.isPending;
+  const beyla = useMutation({
+    mutationFn: (p: string) => api.installBeyla(projectId, server.id, p),
+    onSuccess: (s) => onResult(s.last_result || "(no output)", true),
+    onError: (e) => onResult(errText(e)),
+  });
+  const busy = action.isPending || run.isPending || beyla.isPending;
 
   function act(lbl: string, a: "install" | "remove" | "status") {
     setLabel(lbl);
@@ -241,6 +242,30 @@ function ServerRow({
             >
               <StopCircle className="h-3.5 w-3.5" /> Remove agent
             </Button>
+          </Section>
+
+          {/* Zero-code app metrics via Beyla (eBPF) */}
+          <Section title="App metrics (Beyla · zero-code, no code changes)">
+            <Input
+              value={ports}
+              onChange={(e) => setPorts(e.target.value)}
+              placeholder="8080,8083,8084"
+              title="App ports to instrument (comma-separated)"
+              className="h-8 w-44 font-mono text-xs"
+            />
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={busy || !ports.trim()}
+              onClick={() => {
+                setLabel("Install app metrics (Beyla)");
+                setOpen(true);
+                beyla.mutate(ports);
+              }}
+            >
+              <Gauge className="h-3.5 w-3.5" /> Install app metrics
+            </Button>
+            <span className="text-xs text-fg-muted">deploys <code className="font-mono">pulse-beyla</code> for the listed ports</span>
           </Section>
 
           {/* Diagnostics */}

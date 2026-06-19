@@ -300,6 +300,11 @@ export const api = {
     request<ManagedServer>(`/projects/${projectId}/servers/${serverId}/${action}`, {
       method: "POST",
     }),
+  installBeyla: (projectId: string, serverId: string, ports: string) =>
+    request<ManagedServer>(`/projects/${projectId}/servers/${serverId}/beyla`, {
+      method: "POST",
+      body: JSON.stringify({ ports }),
+    }),
   runServerCommand: (projectId: string, serverId: string, command: string) =>
     request<ManagedServer>(`/projects/${projectId}/servers/${serverId}/run`, {
       method: "POST",

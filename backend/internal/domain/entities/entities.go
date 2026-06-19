@@ -83,6 +83,7 @@ type ManagedServer struct {
 	Status      string     `json:"status"`
 	LastResult  string     `json:"last_result"`
 	IngestKeyID *uuid.UUID `json:"-"`
+	BeylaKeyID  *uuid.UUID `json:"-"` // ingest key for the zero-code app agent (Beyla)
 	CreatedAt   time.Time  `json:"created_at"`
 	UpdatedAt   time.Time  `json:"updated_at"`
 }
