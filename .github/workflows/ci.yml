@@ -40,3 +40,42 @@ jobs:
       - name: Build (typecheck + bundle)
         working-directory: frontend
         run: npm run build
+
+  # Publish :latest (and a :sha tag) on every push to main so the deploy
+  # compose can `docker compose pull`. Multi-arch release images are still
+  # built by release-agent.yml on version tags.
+  images:
+    needs: [backend, frontend]
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+    strategy:
+      matrix:
+        include:
+          - { name: pulse-backend,  context: ./backend,  file: ./backend/Dockerfile }
+          - { name: pulse-frontend, context: ./frontend, file: ./frontend/Dockerfile }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/${{ matrix.name }}
+          tags: |
+            type=raw,value=latest
+            type=sha,format=short
+      - uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.file }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
