@@ -421,6 +421,10 @@ free -h
   </pre>
 )}
 
+    </div>
+  );
+}
+
 function AddServerModal({
   open,
   projectId,
