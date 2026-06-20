@@ -7,9 +7,11 @@ import {
   LineChart,
   Lock,
   LogOut,
+  Moon,
   Network,
   ScrollText,
   Settings,
+  Sun,
   Waypoints,
   Boxes,
   ServerCog,
@@ -20,6 +22,7 @@ import { cn } from "@/lib/utils";
 import { useProjectReady } from "@/hooks/useProjectReady";
 import { Spinner } from "@/components/common";
 import { ProjectSwitcher } from "@/components/common/ProjectSwitcher";
+import { useThemeStore } from "@/store/theme";
 
 type NavItem = {
   to: string;
@@ -49,6 +52,7 @@ export function AppLayout() {
   const { user, refreshToken, logout } = useAuthStore();
   const navigate = useNavigate();
   const { ready, loading } = useProjectReady(projectId);
+  const { theme, toggle: toggleTheme } = useThemeStore();
 
   const handleLogout = async () => {
     if (refreshToken) await api.logout(refreshToken).catch(() => {});
@@ -150,13 +154,22 @@ export function AppLayout() {
               </p>
               <p className="truncate text-xs text-fg-muted">{user?.email}</p>
             </div>
-            <button
-              onClick={handleLogout}
-              className="text-fg-muted hover:text-danger transition-colors"
-              title="Logout"
-            >
-              <LogOut className="h-4 w-4" />
-            </button>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={toggleTheme}
+                className="rounded p-1.5 text-fg-muted transition-colors hover:bg-surface-2 hover:text-fg"
+                title={theme === "dark" ? "Switch to light" : "Switch to dark"}
+              >
+                {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+              </button>
+              <button
+                onClick={handleLogout}
+                className="rounded p-1.5 text-fg-muted transition-colors hover:bg-surface-2 hover:text-danger"
+                title="Logout"
+              >
+                <LogOut className="h-4 w-4" />
+              </button>
+            </div>
           </div>
         </div>
       </aside>

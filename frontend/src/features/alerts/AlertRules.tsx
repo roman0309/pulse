@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus, Trash2, BellRing } from "lucide-react";
+import { Plus, Trash2, BellRing, Pencil } from "lucide-react";
 import { api } from "@/services/api";
 import { toast } from "@/lib/toast";
 import {
@@ -19,6 +19,16 @@ const OP_LABEL: Record<string, string> = { gt: ">", lt: "<", gte: "â‰¥", lte: "â
 export function AlertRules({ projectId }: { projectId: string }) {
   const qc = useQueryClient();
   const [modal, setModal] = useState(false);
+  const [editing, setEditing] = useState<AlertRule | null>(null);
+
+  const openNew = () => {
+    setEditing(null);
+    setModal(true);
+  };
+  const openEdit = (r: AlertRule) => {
+    setEditing(r);
+    setModal(true);
+  };
 
   const rules = useQuery({
     queryKey: ["alert-rules", projectId],
@@ -47,7 +57,7 @@ export function AlertRules({ projectId }: { projectId: string }) {
   return (
     <div>
       <div className="flex justify-end mb-3">
-        <Button size="sm" onClick={() => setModal(true)}>
+        <Button size="sm" onClick={openNew}>
           <Plus className="h-4 w-4" /> New rule
         </Button>
       </div>
@@ -91,8 +101,16 @@ export function AlertRules({ projectId }: { projectId: string }) {
                     {r.enabled ? "Enabled" : "Disabled"}
                   </button>
                   <button
+                    onClick={() => openEdit(r)}
+                    className="text-fg-muted hover:text-fg transition"
+                    title="Edit rule"
+                  >
+                    <Pencil className="h-4 w-4" />
+                  </button>
+                  <button
                     onClick={() => del.mutate(r.id)}
                     className="text-fg-muted hover:text-danger transition"
+                    title="Delete rule"
                   >
                     <Trash2 className="h-4 w-4" />
                   </button>
@@ -107,7 +125,7 @@ export function AlertRules({ projectId }: { projectId: string }) {
           title="No alert rules"
           description="Create a rule to get notified automatically when a metric crosses a threshold."
           action={
-            <Button size="sm" onClick={() => setModal(true)}>
+            <Button size="sm" onClick={openNew}>
               <Plus className="h-4 w-4" /> Create rule
             </Button>
           }
@@ -115,8 +133,10 @@ export function AlertRules({ projectId }: { projectId: string }) {
       )}
 
       <RuleModal
+        key={editing?.id ?? "new"}
         open={modal}
         projectId={projectId}
+        rule={editing}
         services={services.data ?? []}
         onClose={() => setModal(false)}
         onSaved={() => {
@@ -131,29 +151,37 @@ export function AlertRules({ projectId }: { projectId: string }) {
 function RuleModal({
   open,
   projectId,
+  rule,
   services,
   onClose,
   onSaved,
 }: {
   open: boolean;
   projectId: string;
+  rule?: AlertRule | null;
   services: Service[];
   onClose: () => void;
   onSaved: () => void;
 }) {
-  const [form, setForm] = useState({
-    name: "",
-    metric: "error_rate",
-    operator: "gt",
-    threshold: 5,
-    for_seconds: 0,
-    severity: "high",
-    type: "high_error_rate",
-    service_id: "",
-    notify: "", // "" = off | channel id | "__inline__"
-    notify_type: "none",
-    notify_url: "",
-  });
+  const editing = !!rule;
+  const [form, setForm] = useState(() => ({
+    name: rule?.name ?? "",
+    metric: rule?.metric ?? "error_rate",
+    operator: rule?.operator ?? "gt",
+    threshold: rule?.threshold ?? 5,
+    for_seconds: rule?.for_seconds ?? 0,
+    severity: rule?.severity ?? "high",
+    type: rule?.type ?? "high_error_rate",
+    service_id: rule?.service_id ?? "",
+    // "" = off | channel id | "__inline__"
+    notify: rule?.notify_channel_id
+      ? rule.notify_channel_id
+      : rule && rule.notify_type !== "none"
+        ? "__inline__"
+        : "",
+    notify_type: rule && rule.notify_type !== "none" ? rule.notify_type : "none",
+    notify_url: rule?.notify_url ?? "",
+  }));
   const set = (k: string, v: string | number) => setForm((f) => ({ ...f, [k]: v }));
 
   const channels = useQuery({
@@ -165,7 +193,7 @@ function RuleModal({
     mutationFn: () => {
       const inline = form.notify === "__inline__";
       const channelId = inline || form.notify === "" ? null : form.notify;
-      return api.createAlertRule(projectId, {
+      const body = {
         name: form.name,
         metric: form.metric,
         operator: form.operator,
@@ -177,17 +205,20 @@ function RuleModal({
         notify_channel_id: channelId,
         notify_type: inline ? form.notify_type : "none",
         notify_url: inline ? form.notify_url : "",
-      } as never);
+      };
+      return editing
+        ? api.updateAlertRule(projectId, rule!.id, body as never)
+        : api.createAlertRule(projectId, body as never);
     },
     onSuccess: () => {
-      toast.success("Alert rule created");
+      toast.success(editing ? "Alert rule saved" : "Alert rule created");
       onSaved();
     },
-    onError: () => toast.error("Couldn't create rule"),
+    onError: () => toast.error(editing ? "Couldn't save rule" : "Couldn't create rule"),
   });
 
   return (
-    <Modal open={open} onClose={onClose} title="New alert rule">
+    <Modal open={open} onClose={onClose} title={editing ? "Edit alert rule" : "New alert rule"}>
       <div className="space-y-3">
         <div className="space-y-1.5">
           <Label>Name</Label>
@@ -317,7 +348,7 @@ function RuleModal({
             disabled={form.name.length < 1 || mutation.isPending}
             onClick={() => mutation.mutate()}
           >
-            Create rule
+            {editing ? "Save changes" : "Create rule"}
           </Button>
         </div>
       </div>

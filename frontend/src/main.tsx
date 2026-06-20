@@ -4,7 +4,11 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { RouterProvider } from "react-router-dom";
 import { router } from "@/routes";
 import { Toaster } from "@/components/common/Toaster";
+import { applyTheme, useThemeStore } from "@/store/theme";
 import "@/styles/globals.css";
+
+// Apply the persisted theme before first paint.
+applyTheme(useThemeStore.getState().theme);
 
 const queryClient = new QueryClient({
   defaultOptions: {

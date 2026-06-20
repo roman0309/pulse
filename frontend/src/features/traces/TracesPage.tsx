@@ -3,7 +3,7 @@ import { useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { ChevronLeft, Network, AlertTriangle } from "lucide-react";
 import { api } from "@/services/api";
-import { Badge, Card, CardContent } from "@/components/ui/primitives";
+import { Badge, Card, CardContent, Select } from "@/components/ui/primitives";
 import { PageHeader, Spinner, EmptyState, TimeRangeControl } from "@/components/common";
 import { cn, relativeTime } from "@/lib/utils";
 import { rangeWindow, useRangeStore } from "@/store/range";
@@ -26,10 +26,17 @@ export function TracesPage() {
   const { projectId } = useParams();
   const { range, live } = useRangeStore();
   const [selected, setSelected] = useState<string | null>(null);
+  const [service, setService] = useState("");
+  const [errorsOnly, setErrorsOnly] = useState(false);
 
+  const services = useQuery({
+    queryKey: ["services", projectId],
+    queryFn: () => api.listServices(projectId!),
+  });
   const traces = useQuery({
-    queryKey: ["traces", projectId, range],
-    queryFn: () => api.listTraces(projectId!, { from: rangeWindow(range).from, limit: 100 }),
+    queryKey: ["traces", projectId, range, service],
+    queryFn: () =>
+      api.listTraces(projectId!, { from: rangeWindow(range).from, limit: 100, service: service || undefined }),
     refetchInterval: live ? 15_000 : false,
     enabled: !selected,
   });
@@ -38,21 +45,44 @@ export function TracesPage() {
     return <TraceDetail projectId={projectId!} traceId={selected} onBack={() => setSelected(null)} />;
   }
 
+  const list = (traces.data ?? []).filter((t) => !errorsOnly || t.error_count > 0);
+
   return (
     <div>
       <PageHeader
         title="Traces"
         description="Distributed request traces (zero-code via Beyla or any OpenTelemetry SDK)"
-        actions={<TimeRangeControl />}
+        actions={
+          <div className="flex items-center gap-2">
+            <Select value={service} onChange={(e) => setService(e.target.value)} className="w-40">
+              <option value="">All services</option>
+              {services.data?.map((s) => (
+                <option key={s.id} value={s.name}>
+                  {s.name}
+                </option>
+              ))}
+            </Select>
+            <button
+              onClick={() => setErrorsOnly((v) => !v)}
+              className={cn(
+                "rounded-md border px-2.5 py-1 text-xs transition-colors",
+                errorsOnly ? "border-danger/40 text-danger" : "border-border text-fg-muted hover:text-fg"
+              )}
+            >
+              Errors only
+            </button>
+            <TimeRangeControl />
+          </div>
+        }
       />
 
       {traces.isLoading ? (
         <Spinner />
-      ) : traces.data && traces.data.length > 0 ? (
+      ) : list.length > 0 ? (
         <Card>
           <CardContent className="p-0">
             <div className="divide-y divide-border">
-              {traces.data.map((t) => (
+              {list.map((t) => (
                 <TraceRow key={t.trace_id} trace={t} onClick={() => setSelected(t.trace_id)} />
               ))}
             </div>
