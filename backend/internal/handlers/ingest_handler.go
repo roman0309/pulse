@@ -61,7 +61,7 @@ func (h *IngestHandler) OTLPLogs(c *gin.Context) {
 		return
 	}
 	projectID := middleware.IngestProjectID(c)
-	cache := newServiceCache(h.core, projectID)
+	cache := newServiceCache(h.core, projectID, middleware.IngestKeyID(c))
 	logs := make([]entities.LogEntry, 0, len(raw))
 	for _, l := range raw {
 		if anonService(l.ServiceName) {
@@ -170,7 +170,7 @@ func (h *IngestHandler) IngestLogsJSON(c *gin.Context) {
 		return
 	}
 	projectID := middleware.IngestProjectID(c)
-	cache := newServiceCache(h.core, projectID)
+	cache := newServiceCache(h.core, projectID, middleware.IngestKeyID(c))
 	logs := make([]entities.LogEntry, 0, len(req.Logs))
 	for _, l := range req.Logs {
 		if anonService(l.Service) {
@@ -221,7 +221,7 @@ func (h *IngestHandler) PromRemoteWrite(c *gin.Context) {
 
 func (h *IngestHandler) writeMetrics(c *gin.Context, raw []ingest.RawMetric) {
 	projectID := middleware.IngestProjectID(c)
-	cache := newServiceCache(h.core, projectID)
+	cache := newServiceCache(h.core, projectID, middleware.IngestKeyID(c))
 	points := make([]entities.MetricPoint, 0, len(raw))
 	for _, m := range raw {
 		if anonService(m.ServiceName) {
@@ -264,15 +264,17 @@ func readBody(c *gin.Context) ([]byte, bool) {
 	return buf.Bytes(), true
 }
 
-// serviceCache resolves service names to ids once per request.
+// serviceCache resolves service names to ids once per request. New services
+// are attributed to keyID so they can be cleaned up when the key is revoked.
 type serviceCache struct {
 	core      *services.CoreService
 	projectID uuid.UUID
+	keyID     uuid.UUID
 	byName    map[string]uuid.UUID
 }
 
-func newServiceCache(core *services.CoreService, projectID uuid.UUID) *serviceCache {
-	return &serviceCache{core: core, projectID: projectID, byName: map[string]uuid.UUID{}}
+func newServiceCache(core *services.CoreService, projectID, keyID uuid.UUID) *serviceCache {
+	return &serviceCache{core: core, projectID: projectID, keyID: keyID, byName: map[string]uuid.UUID{}}
 }
 
 func (sc *serviceCache) resolve(c *gin.Context, name string) (uuid.UUID, string) {
@@ -282,7 +284,7 @@ func (sc *serviceCache) resolve(c *gin.Context, name string) (uuid.UUID, string)
 	if id, ok := sc.byName[name]; ok {
 		return id, name
 	}
-	id, err := sc.core.ResolveService(c.Request.Context(), sc.projectID, name, "production")
+	id, err := sc.core.ResolveService(c.Request.Context(), sc.projectID, name, "production", sc.keyID)
 	if err != nil {
 		return uuid.Nil, name
 	}

@@ -10,7 +10,10 @@ import (
 	"github.com/google/uuid"
 )
 
-const ctxProjectID = "ingest_project_id"
+const (
+	ctxProjectID = "ingest_project_id"
+	ctxKeyID     = "ingest_key_id"
+)
 
 // IngestAuth authenticates ingestion requests via a per-project ingest key.
 // The key is read from `X-Pulse-Key` or `Authorization: Bearer <key>` and
@@ -27,12 +30,13 @@ func IngestAuth(keys repositories.IngestKeyRepository) gin.HandlerFunc {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "missing ingest key"})
 			return
 		}
-		projectID, err := keys.ResolveProject(c.Request.Context(), hash.SHA256(raw))
+		projectID, keyID, err := keys.ResolveProject(c.Request.Context(), hash.SHA256(raw))
 		if err != nil {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid ingest key"})
 			return
 		}
 		c.Set(ctxProjectID, projectID)
+		c.Set(ctxKeyID, keyID)
 		c.Next()
 	}
 }
@@ -40,6 +44,13 @@ func IngestAuth(keys repositories.IngestKeyRepository) gin.HandlerFunc {
 // IngestProjectID returns the project resolved from the ingest key.
 func IngestProjectID(c *gin.Context) uuid.UUID {
 	v, _ := c.Get(ctxProjectID)
+	id, _ := v.(uuid.UUID)
+	return id
+}
+
+// IngestKeyID returns the ingest key id the request authenticated with.
+func IngestKeyID(c *gin.Context) uuid.UUID {
+	v, _ := c.Get(ctxKeyID)
 	id, _ := v.(uuid.UUID)
 	return id
 }

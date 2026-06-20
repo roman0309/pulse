@@ -14,15 +14,15 @@ type IngestKeyRepo struct{ db *pgxpool.Pool }
 
 func NewIngestKeyRepo(db *pgxpool.Pool) *IngestKeyRepo { return &IngestKeyRepo{db: db} }
 
-func (r *IngestKeyRepo) ResolveProject(ctx context.Context, keyHash string) (uuid.UUID, error) {
-	var projectID uuid.UUID
+func (r *IngestKeyRepo) ResolveProject(ctx context.Context, keyHash string) (uuid.UUID, uuid.UUID, error) {
+	var projectID, keyID uuid.UUID
 	err := r.db.QueryRow(ctx,
-		`UPDATE ingest_keys SET last_used_at = now() WHERE key_hash=$1 RETURNING project_id`, keyHash,
-	).Scan(&projectID)
+		`UPDATE ingest_keys SET last_used_at = now() WHERE key_hash=$1 RETURNING project_id, id`, keyHash,
+	).Scan(&projectID, &keyID)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return uuid.Nil, ErrNotFound
+		return uuid.Nil, uuid.Nil, ErrNotFound
 	}
-	return projectID, err
+	return projectID, keyID, err
 }
 
 func (r *IngestKeyRepo) Create(ctx context.Context, k *entities.IngestKey) error {

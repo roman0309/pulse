@@ -46,8 +46,10 @@ type ServiceRepository interface {
 	Update(ctx context.Context, s *entities.Service) error
 	Delete(ctx context.Context, id uuid.UUID) error
 	// GetOrCreateByName resolves a service by (project, name, env), creating it
-	// on first sight. Used by the ingestion pipeline for unknown services.
-	GetOrCreateByName(ctx context.Context, projectID uuid.UUID, name, env string) (uuid.UUID, error)
+	// on first sight (attributed to keyID). Used by the ingestion pipeline.
+	GetOrCreateByName(ctx context.Context, projectID uuid.UUID, name, env string, keyID uuid.UUID) (uuid.UUID, error)
+	// ListByIngestKey returns services first created by the given ingest key.
+	ListByIngestKey(ctx context.Context, keyID uuid.UUID) ([]entities.Service, error)
 }
 
 // ServerRepository manages remote servers Pulse can manage over Tailscale SSH.
@@ -67,7 +69,9 @@ type AuditRepository interface {
 
 // IngestKeyRepository manages ingestion API keys.
 type IngestKeyRepository interface {
-	ResolveProject(ctx context.Context, keyHash string) (uuid.UUID, error)
+	// ResolveProject validates a key hash, bumps last_used_at, and returns the
+	// owning project id and the key id.
+	ResolveProject(ctx context.Context, keyHash string) (projectID, keyID uuid.UUID, err error)
 	Create(ctx context.Context, k *entities.IngestKey) error
 	ListByProject(ctx context.Context, projectID uuid.UUID) ([]entities.IngestKey, error)
 	Delete(ctx context.Context, projectID, keyID uuid.UUID) error

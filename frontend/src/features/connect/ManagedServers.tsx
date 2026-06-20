@@ -66,7 +66,13 @@ export function ManagedServers({ projectId }: { projectId: string }) {
     queryKey: ["servers", projectId],
     queryFn: () => api.listServers(projectId),
   });
-  const invalidate = () => qc.invalidateQueries({ queryKey: ["servers", projectId] });
+  const invalidate = () => {
+    // Server actions can create/remove services + their metrics, so refresh
+    // those views too.
+    qc.invalidateQueries({ queryKey: ["servers", projectId] });
+    qc.invalidateQueries({ queryKey: ["services", projectId] });
+    qc.invalidateQueries({ queryKey: ["dashboard", projectId] });
+  };
 
   const del = useMutation({
     mutationFn: (id: string) => api.deleteServer(projectId, id),

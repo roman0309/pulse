@@ -213,9 +213,11 @@ func (s *CoreService) DeleteServer(ctx context.Context, userID, projectID, serve
 		}
 	}
 	if srv.IngestKeyID != nil {
+		s.purgeServicesForKey(ctx, projectID, *srv.IngestKeyID)
 		_ = s.IngestKeys.Delete(ctx, projectID, *srv.IngestKeyID)
 	}
 	if srv.BeylaKeyID != nil {
+		s.purgeServicesForKey(ctx, projectID, *srv.BeylaKeyID)
 		_ = s.IngestKeys.Delete(ctx, projectID, *srv.BeylaKeyID)
 	}
 	s.audit(ctx, projectID, userID, &serverID, "delete_server", srv.SSHTarget, true)
@@ -273,6 +275,7 @@ func (s *CoreService) RemoveAgent(ctx context.Context, userID, serverID uuid.UUI
 	out, hostKey, runErr := s.Exec.Run(ctx, conn, "docker rm -f pulse-agent 2>/dev/null; echo removed")
 	s.pinHostKey(srv, hostKey)
 	if srv.IngestKeyID != nil {
+		s.purgeServicesForKey(ctx, srv.ProjectID, *srv.IngestKeyID)
 		_ = s.IngestKeys.Delete(ctx, srv.ProjectID, *srv.IngestKeyID)
 		srv.IngestKeyID = nil
 	}
@@ -300,6 +303,7 @@ func (s *CoreService) RemoveBeyla(ctx context.Context, userID, serverID uuid.UUI
 	out, hostKey, runErr := s.Exec.Run(ctx, conn, "docker rm -f pulse-beyla 2>/dev/null; echo removed")
 	s.pinHostKey(srv, hostKey)
 	if srv.BeylaKeyID != nil {
+		s.purgeServicesForKey(ctx, srv.ProjectID, *srv.BeylaKeyID)
 		_ = s.IngestKeys.Delete(ctx, srv.ProjectID, *srv.BeylaKeyID)
 		srv.BeylaKeyID = nil
 	}
@@ -1010,8 +1014,26 @@ func generateToken() (string, error) {
 // ResolveService resolves (and auto-creates) a service by name within a project.
 // Used by the OTLP / remote_write ingestion pipeline for services that were not
 // registered manually.
-func (s *CoreService) ResolveService(ctx context.Context, projectID uuid.UUID, name, env string) (uuid.UUID, error) {
-	return s.Services.GetOrCreateByName(ctx, projectID, name, env)
+func (s *CoreService) ResolveService(ctx context.Context, projectID uuid.UUID, name, env string, keyID uuid.UUID) (uuid.UUID, error) {
+	return s.Services.GetOrCreateByName(ctx, projectID, name, env, keyID)
+}
+
+// purgeServicesForKey deletes the services first created by keyID and their
+// time-series data — used when an agent/Beyla (and thus its key) is removed.
+func (s *CoreService) purgeServicesForKey(ctx context.Context, projectID, keyID uuid.UUID) {
+	if keyID == uuid.Nil {
+		return
+	}
+	svcs, err := s.Services.ListByIngestKey(ctx, keyID)
+	if err != nil {
+		return
+	}
+	pid := projectID.String()
+	for _, svc := range svcs {
+		_ = s.Metrics.DeleteService(ctx, pid, svc.ID.String())
+		_ = s.Logs.DeleteService(ctx, pid, svc.ID.String())
+		_ = s.Services.Delete(ctx, svc.ID)
+	}
 }
 
 func (s *CoreService) broadcast(projectID uuid.UUID, kind string, payload interface{}) {

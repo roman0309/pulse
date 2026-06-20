@@ -70,18 +70,45 @@ func (r *ServiceRepo) Delete(ctx context.Context, id uuid.UUID) error {
 	return err
 }
 
-func (r *ServiceRepo) GetOrCreateByName(ctx context.Context, projectID uuid.UUID, name, env string) (uuid.UUID, error) {
+func (r *ServiceRepo) GetOrCreateByName(ctx context.Context, projectID uuid.UUID, name, env string, keyID uuid.UUID) (uuid.UUID, error) {
 	if env == "" {
 		env = "production"
 	}
+	var kid any // store NULL rather than the zero UUID when unknown
+	if keyID != uuid.Nil {
+		kid = keyID
+	}
 	var id uuid.UUID
+	// ingest_key_id is set only on first creation (DO UPDATE leaves it).
 	err := r.db.QueryRow(ctx,
-		`INSERT INTO services (project_id, name, environment, status)
-		 VALUES ($1, $2, $3, 'healthy')
+		`INSERT INTO services (project_id, name, environment, status, ingest_key_id)
+		 VALUES ($1, $2, $3, 'healthy', $4)
 		 ON CONFLICT (project_id, name, environment)
 		 DO UPDATE SET name = EXCLUDED.name
 		 RETURNING id`,
-		projectID, name, env,
+		projectID, name, env, kid,
 	).Scan(&id)
 	return id, err
+}
+
+// ListByIngestKey returns services first created by the given ingest key.
+func (r *ServiceRepo) ListByIngestKey(ctx context.Context, keyID uuid.UUID) ([]entities.Service, error) {
+	rows, err := r.db.Query(ctx,
+		`SELECT id, project_id, name, environment, status, created_at, updated_at
+		 FROM services WHERE ingest_key_id=$1`,
+		keyID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []entities.Service
+	for rows.Next() {
+		var s entities.Service
+		if err := rows.Scan(&s.ID, &s.ProjectID, &s.Name, &s.Environment, &s.Status, &s.CreatedAt, &s.UpdatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, s)
+	}
+	return out, rows.Err()
 }
