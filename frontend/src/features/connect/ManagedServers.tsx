@@ -239,7 +239,7 @@ function ServerRow({
     beyla.mutate(ports);
   }
   function removeBeyla() {
-    if (!confirm("Remove the app-metrics agent (pulse-beyla)?")) return;
+    if (!confirm("Remove app metrics (Beyla)?\n\nThis stops pulse-beyla and deletes the services, charts and metrics it created.")) return;
     setLabel("Remove app metrics (Beyla)");
     setOpen(true);
     beylaRemove.mutate();
@@ -280,7 +280,12 @@ function ServerRow({
           </Button>
           <button
             onClick={() => {
-              if (confirm(`Delete server "${server.name}"? This removes it from Pulse and revokes its ingest keys.`)) onDelete();
+              if (
+                confirm(
+                  `Delete server "${server.name}"?\n\nThis removes it from Pulse, revokes its ingest keys, stops its agents, and deletes the services & metrics they created.`
+                )
+              )
+                onDelete();
             }}
             className="rounded p-1.5 text-fg-muted transition hover:bg-surface-2 hover:text-danger"
             title="Delete server"
@@ -317,7 +322,12 @@ function ServerRow({
                 disabled={busy}
                 className="text-danger hover:text-danger"
                 onClick={() => {
-                  if (confirm("Remove the host agent (pulse-agent)?")) act("Remove host agent", "remove");
+                  if (
+                    confirm(
+                      "Remove the host agent?\n\nThis stops pulse-agent and deletes the host/container services and metrics it created."
+                    )
+                  )
+                    act("Remove host agent", "remove");
                 }}
               >
                 <StopCircle className="h-3.5 w-3.5" /> Remove
