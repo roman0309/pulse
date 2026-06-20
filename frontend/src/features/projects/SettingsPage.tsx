@@ -135,11 +135,23 @@ function UpdateCard() {
   const available = status.data?.available ?? false;
   const short = (d?: string) => (d ? d.replace("sha256:", "").slice(0, 12) : "");
 
-  const start = () => {
+  const start = async () => {
     if (!confirm("Update Pulse now? The app will pull the latest images and restart (~30–60s).")) return;
     setUpdating(true);
-    // Fire-and-forget: the backend is recreated mid-request, then reload.
-    api.selfUpdate().catch(() => {});
+    try {
+      // Launch the updater. The backend may be recreated before it responds,
+      // so a dropped connection here is expected and treated as success.
+      await api.selfUpdate();
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "";
+      // A network/abort error means the backend already restarted — keep going.
+      const restarted = /load failed|fetch|network|aborted/i.test(msg);
+      if (!restarted) {
+        setUpdating(false);
+        toast.error(`Update failed to start: ${msg || "unknown error"}`);
+        return;
+      }
+    }
     setTimeout(() => window.location.reload(), 45000);
   };
 
