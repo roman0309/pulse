@@ -819,8 +819,11 @@ func (s *CoreService) SelfUpdate(ctx context.Context) error {
 		return errors.New("self-update is not enabled (Docker socket not mounted)")
 	}
 	cmd := append([]string{"--run-once", "--cleanup"}, s.SelfUpdateContainers...)
+	// Pin the Docker API version: watchtower's client otherwise negotiates an
+	// API too old for modern daemons (min 1.40) and crashes.
+	env := []string{"DOCKER_API_VERSION=1.41"}
 	binds := []string{s.DockerSocket + ":/var/run/docker.sock"}
-	_, err := s.Docker.RunDetached(ctx, s.WatchtowerImage, cmd, binds)
+	_, err := s.Docker.RunDetached(ctx, s.WatchtowerImage, cmd, env, binds)
 	return err
 }
 

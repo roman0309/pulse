@@ -51,14 +51,15 @@ func (c *Client) Ping(ctx context.Context) error {
 }
 
 // RunDetached pulls image (best-effort) then creates and starts a container
-// with the given command and bind mounts, auto-removing on exit. Returns the
-// container id.
-func (c *Client) RunDetached(ctx context.Context, image string, cmd, binds []string) (string, error) {
+// with the given command, env and bind mounts, auto-removing on exit. Returns
+// the container id.
+func (c *Client) RunDetached(ctx context.Context, image string, cmd, env, binds []string) (string, error) {
 	c.pull(ctx, image) // best-effort; create will fail if truly absent
 
 	body, _ := json.Marshal(map[string]any{
 		"Image": image,
 		"Cmd":   cmd,
+		"Env":   env,
 		"HostConfig": map[string]any{
 			"Binds":      binds,
 			"AutoRemove": true,
