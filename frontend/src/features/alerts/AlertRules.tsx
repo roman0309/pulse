@@ -146,19 +146,35 @@ function RuleModal({
     severity: "high",
     type: "high_error_rate",
     service_id: "",
+    notify: "", // "" = off | channel id | "__inline__"
     notify_type: "none",
     notify_url: "",
   });
   const set = (k: string, v: string | number) => setForm((f) => ({ ...f, [k]: v }));
 
+  const channels = useQuery({
+    queryKey: ["channels", projectId],
+    queryFn: () => api.listChannels(projectId),
+  });
+
   const mutation = useMutation({
-    mutationFn: () =>
-      api.createAlertRule(projectId, {
-        ...form,
+    mutationFn: () => {
+      const inline = form.notify === "__inline__";
+      const channelId = inline || form.notify === "" ? null : form.notify;
+      return api.createAlertRule(projectId, {
+        name: form.name,
+        metric: form.metric,
+        operator: form.operator,
         threshold: Number(form.threshold),
         for_seconds: Number(form.for_seconds),
+        severity: form.severity,
+        type: form.type,
         service_id: form.service_id || null,
-      } as never),
+        notify_channel_id: channelId,
+        notify_type: inline ? form.notify_type : "none",
+        notify_url: inline ? form.notify_url : "",
+      } as never);
+    },
     onSuccess: onSaved,
   });
 
@@ -241,32 +257,49 @@ function RuleModal({
             ))}
           </Select>
         </div>
-        <div className="grid grid-cols-2 gap-2">
-          <div className="space-y-1.5">
-            <Label>Notify</Label>
-            <Select className="w-full" value={form.notify_type} onChange={(e) => set("notify_type", e.target.value)}>
-              <option value="none">none</option>
-              <option value="slack">Slack</option>
-              <option value="telegram">Telegram</option>
-              <option value="webhook">Webhook</option>
-            </Select>
-          </div>
-          <div className="space-y-1.5">
-            <Label>Notify URL</Label>
-            <Input
-              value={form.notify_url}
-              onChange={(e) => set("notify_url", e.target.value)}
-              placeholder={
-                form.notify_type === "telegram"
-                  ? "https://api.telegram.org/bot<TOKEN>/sendMessage?chat_id=<ID>"
-                  : form.notify_type === "slack"
-                    ? "https://hooks.slack.com/…"
-                    : "https://example.com/webhook"
-              }
-              disabled={form.notify_type === "none"}
-            />
-          </div>
+        <div className="space-y-1.5">
+          <Label>Notify</Label>
+          <Select className="w-full" value={form.notify} onChange={(e) => set("notify", e.target.value)}>
+            <option value="">Off</option>
+            {(channels.data ?? []).map((ch) => (
+              <option key={ch.id} value={ch.id}>
+                {ch.name} · {ch.type}
+              </option>
+            ))}
+            <option value="__inline__">Custom inline URL…</option>
+          </Select>
+          {(channels.data ?? []).length === 0 && (
+            <p className="text-xs text-fg-muted">
+              Tip: save a Telegram bot / Slack channel in Settings → Notification channels, then reuse it here.
+            </p>
+          )}
         </div>
+        {form.notify === "__inline__" && (
+          <div className="grid grid-cols-2 gap-2">
+            <div className="space-y-1.5">
+              <Label>Type</Label>
+              <Select className="w-full" value={form.notify_type} onChange={(e) => set("notify_type", e.target.value)}>
+                <option value="slack">Slack</option>
+                <option value="telegram">Telegram</option>
+                <option value="webhook">Webhook</option>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label>URL</Label>
+              <Input
+                value={form.notify_url}
+                onChange={(e) => set("notify_url", e.target.value)}
+                placeholder={
+                  form.notify_type === "telegram"
+                    ? "https://api.telegram.org/bot<TOKEN>/sendMessage?chat_id=<ID>"
+                    : form.notify_type === "slack"
+                      ? "https://hooks.slack.com/…"
+                      : "https://example.com/webhook"
+                }
+              />
+            </div>
+          </div>
+        )}
         <div className="flex justify-end gap-2 pt-1">
           <Button variant="ghost" size="sm" onClick={onClose}>
             Cancel

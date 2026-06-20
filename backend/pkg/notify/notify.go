@@ -17,6 +17,19 @@ func New() *Notifier {
 	return &Notifier{client: &http.Client{Timeout: 5 * time.Second}}
 }
 
+// TargetURL builds the delivery URL for a saved channel from its config map.
+// telegram → bot sendMessage endpoint (token in path, chat_id in query);
+// slack/webhook → the stored URL.
+func TargetURL(channelType string, cfg map[string]string) string {
+	switch channelType {
+	case "telegram":
+		return fmt.Sprintf("https://api.telegram.org/bot%s/sendMessage?chat_id=%s",
+			cfg["token"], neturl.QueryEscape(cfg["chat_id"]))
+	default:
+		return cfg["url"]
+	}
+}
+
 // Message is the alert payload delivered to a channel.
 type Message struct {
 	Title       string  `json:"title"`

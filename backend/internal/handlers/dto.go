@@ -69,9 +69,10 @@ type AlertRuleRequest struct {
 	ForSeconds int     `json:"for_seconds" binding:"min=0,max=86400"`
 	Severity   string  `json:"severity" binding:"required,oneof=low medium high critical"`
 	Type       string  `json:"type" binding:"required,oneof=high_latency high_error_rate service_down"`
-	NotifyType string  `json:"notify_type" binding:"omitempty,oneof=none slack webhook"`
-	NotifyURL  string  `json:"notify_url" binding:"omitempty,url,max=500"`
-	Enabled    *bool   `json:"enabled"`
+	NotifyType      string `json:"notify_type" binding:"omitempty,oneof=none slack telegram webhook"`
+	NotifyURL       string `json:"notify_url" binding:"omitempty,url,max=500"`
+	NotifyChannelID string `json:"notify_channel_id" binding:"omitempty,uuid"`
+	Enabled         *bool  `json:"enabled"`
 }
 
 // Ingestion DTOs (used by collector / agents).

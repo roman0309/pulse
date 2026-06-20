@@ -12,6 +12,7 @@ import {
   Label,
 } from "@/components/ui/primitives";
 import { PageHeader, Spinner } from "@/components/common";
+import { NotificationChannels } from "./NotificationChannels";
 
 export function SettingsPage() {
   const { projectId } = useParams();
@@ -78,6 +79,8 @@ export function SettingsPage() {
           </div>
         </CardContent>
       </Card>
+
+      <NotificationChannels projectId={projectId!} />
 
       <Card className="border-danger/30">
         <CardHeader>

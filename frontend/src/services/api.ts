@@ -8,6 +8,7 @@ import type {
   LogEntry,
   ManagedServer,
   MetricSeries,
+  NotificationChannel,
   Organization,
   Project,
   RCAResult,
@@ -280,6 +281,24 @@ export const api = {
     }),
   deleteAlertRule: (projectId: string, ruleId: string) =>
     request(`/projects/${projectId}/alert-rules/${ruleId}`, { method: "DELETE" }),
+
+  // --- notification channels ---
+  listChannels: (projectId: string) =>
+    request<{ channels: NotificationChannel[] }>(
+      `/projects/${projectId}/channels`
+    ).then((r) => r.channels ?? []),
+  createChannel: (
+    projectId: string,
+    body: { name: string; type: string; config: Record<string, string> }
+  ) =>
+    request<NotificationChannel>(`/projects/${projectId}/channels`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  deleteChannel: (projectId: string, channelId: string) =>
+    request(`/projects/${projectId}/channels/${channelId}`, { method: "DELETE" }),
+  testChannel: (projectId: string, channelId: string) =>
+    request(`/projects/${projectId}/channels/${channelId}/test`, { method: "POST" }),
 
   // --- managed servers (remote agent management) ---
   listServers: (projectId: string) =>

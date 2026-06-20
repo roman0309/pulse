@@ -70,6 +70,7 @@ func main() {
 	ingestKeyRepo := pgrepo.NewIngestKeyRepo(pg)
 	alertRuleRepo := pgrepo.NewAlertRuleRepo(pg)
 	serverRepo := pgrepo.NewServerRepo(pg)
+	channelRepo := pgrepo.NewChannelRepo(pg)
 	auditRepo := pgrepo.NewAuditRepo(pg)
 	metricRepo := chrepo.NewMetricRepo(ch)
 	logRepo := chrepo.NewLogRepo(ch)
@@ -81,6 +82,8 @@ func main() {
 	// --- Services (dependency injection) ---
 	tokens := services.NewTokenService(cfg.JWTSecret, cfg.JWTRefreshSecret, cfg.AccessTTL, cfg.RefreshTTL)
 	authService := services.NewAuthService(userRepo, tokens)
+	secretsBox := secrets.New(cfg.CredentialsKey)
+	notifier := notify.New()
 	coreService := &services.CoreService{
 		Orgs:        orgRepo,
 		Projects:    projectRepo,
@@ -93,11 +96,13 @@ func main() {
 		IngestKeys:      ingestKeyRepo,
 		AlertRules:      alertRuleRepo,
 		Servers:         serverRepo,
+		Channels:        channelRepo,
 		Audit:           auditRepo,
 		Analyzer:        analyzer.NewDeterministic(),
 		Hub:             hub,
 		Exec:            remote.NewSSH(),
-		Secrets:         secrets.New(cfg.CredentialsKey),
+		Secrets:         secretsBox,
+		Notifier:        notifier,
 		PublicIngestURL: cfg.PublicIngestURL,
 	}
 
@@ -108,8 +113,10 @@ func main() {
 		Alerts:   alertRepo,
 		Timeline: timelineRepo,
 		Services: serviceRepo,
+		Channels: channelRepo,
 		Hub:      hub,
-		Notifier: notify.New(),
+		Notifier: notifier,
+		Secrets:  secretsBox,
 		Interval: 15 * time.Second,
 		Window:   2 * time.Minute,
 		Log:      log,

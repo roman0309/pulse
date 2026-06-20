@@ -4,8 +4,10 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"regexp"
 	"strings"
 	"time"
@@ -16,6 +18,7 @@ import (
 	"github.com/acme/observability/internal/remote"
 	"github.com/acme/observability/internal/ws"
 	"github.com/acme/observability/pkg/hash"
+	"github.com/acme/observability/pkg/notify"
 	"github.com/acme/observability/pkg/secrets"
 	"github.com/google/uuid"
 )
@@ -36,11 +39,13 @@ type CoreService struct {
 	IngestKeys  repositories.IngestKeyRepository
 	AlertRules  repositories.AlertRuleRepository
 	Servers     repositories.ServerRepository
+	Channels    repositories.ChannelRepository
 	Audit       repositories.AuditRepository
 	Analyzer    analyzer.Analyzer
 	Hub         *ws.Hub
 	Exec        remote.Executor
 	Secrets     *secrets.Box
+	Notifier    *notify.Notifier
 	// PublicIngestURL is the address agents push to; injected into remote installs.
 	PublicIngestURL string
 }
@@ -788,6 +793,107 @@ func (s *CoreService) DeleteIngestKey(ctx context.Context, userID, projectID, ke
 		return err
 	}
 	return s.IngestKeys.Delete(ctx, projectID, keyID)
+}
+
+// ---------- Notification channels ----------
+
+func (s *CoreService) CreateChannel(ctx context.Context, userID, projectID uuid.UUID, name, ctype string, config map[string]string) (*entities.NotificationChannel, error) {
+	if _, err := s.requireProjectAccess(ctx, userID, projectID); err != nil {
+		return nil, err
+	}
+	raw, _ := json.Marshal(config)
+	enc, err := s.Secrets.Encrypt(string(raw))
+	if err != nil {
+		return nil, err
+	}
+	if name == "" {
+		name = ctype
+	}
+	ch := &entities.NotificationChannel{ProjectID: projectID, Name: name, Type: ctype, ConfigEnc: enc}
+	if err := s.Channels.Create(ctx, ch); err != nil {
+		return nil, err
+	}
+	ch.ConfigEnc = ""
+	ch.Hint = channelHint(ctype, config)
+	return ch, nil
+}
+
+func (s *CoreService) ListChannels(ctx context.Context, userID, projectID uuid.UUID) ([]entities.NotificationChannel, error) {
+	if _, err := s.requireProjectAccess(ctx, userID, projectID); err != nil {
+		return nil, err
+	}
+	chs, err := s.Channels.ListByProject(ctx, projectID)
+	if err != nil {
+		return nil, err
+	}
+	for i := range chs {
+		if cfg, derr := s.decodeChannelConfig(&chs[i]); derr == nil {
+			chs[i].Hint = channelHint(chs[i].Type, cfg)
+		}
+		chs[i].ConfigEnc = "" // never leave the service
+	}
+	return chs, nil
+}
+
+func (s *CoreService) DeleteChannel(ctx context.Context, userID, projectID, channelID uuid.UUID) error {
+	if _, err := s.requireProjectAccess(ctx, userID, projectID); err != nil {
+		return err
+	}
+	return s.Channels.Delete(ctx, projectID, channelID)
+}
+
+// TestChannel sends a sample notification through a saved channel.
+func (s *CoreService) TestChannel(ctx context.Context, userID, projectID, channelID uuid.UUID) error {
+	if _, err := s.requireProjectAccess(ctx, userID, projectID); err != nil {
+		return err
+	}
+	ch, err := s.Channels.GetByID(ctx, channelID)
+	if err != nil {
+		return err
+	}
+	if ch.ProjectID != projectID {
+		return ErrForbidden
+	}
+	cfg, err := s.decodeChannelConfig(ch)
+	if err != nil {
+		return err
+	}
+	if s.Notifier == nil {
+		return errors.New("notifier not configured")
+	}
+	return s.Notifier.Send(ctx, ch.Type, notify.TargetURL(ch.Type, cfg), notify.Message{
+		Title:       "Pulse test notification",
+		Status:      "firing",
+		Severity:    "info",
+		Description: "If you can read this, the channel works ✅",
+	})
+}
+
+func (s *CoreService) decodeChannelConfig(ch *entities.NotificationChannel) (map[string]string, error) {
+	plain, err := s.Secrets.Decrypt(ch.ConfigEnc)
+	if err != nil {
+		return nil, err
+	}
+	cfg := map[string]string{}
+	if err := json.Unmarshal([]byte(plain), &cfg); err != nil {
+		return nil, err
+	}
+	return cfg, nil
+}
+
+func channelHint(ctype string, cfg map[string]string) string {
+	switch ctype {
+	case "telegram":
+		if id := cfg["chat_id"]; id != "" {
+			return "chat " + id
+		}
+		return "telegram"
+	default:
+		if u, err := url.Parse(cfg["url"]); err == nil && u.Host != "" {
+			return u.Host
+		}
+		return ctype
+	}
 }
 
 // generateToken returns a random ingest token like "pls_<48 hex chars>".

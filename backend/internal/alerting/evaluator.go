@@ -4,6 +4,7 @@ package alerting
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"time"
@@ -12,6 +13,7 @@ import (
 	"github.com/acme/observability/internal/domain/repositories"
 	"github.com/acme/observability/internal/ws"
 	"github.com/acme/observability/pkg/notify"
+	"github.com/acme/observability/pkg/secrets"
 	"github.com/google/uuid"
 )
 
@@ -22,8 +24,10 @@ type Evaluator struct {
 	Alerts   repositories.AlertRepository
 	Timeline repositories.TimelineRepository
 	Services repositories.ServiceRepository
+	Channels repositories.ChannelRepository
 	Hub      *ws.Hub
 	Notifier *notify.Notifier
+	Secrets  *secrets.Box
 	Interval time.Duration
 	Window   time.Duration
 	Log      *slog.Logger
@@ -172,10 +176,25 @@ func (e *Evaluator) resolve(ctx context.Context, rule *entities.AlertRule, value
 }
 
 func (e *Evaluator) notify(ctx context.Context, rule *entities.AlertRule, service string, value float64, status, desc string) {
-	if e.Notifier == nil || rule.NotifyType == "" || rule.NotifyType == "none" {
+	if e.Notifier == nil {
 		return
 	}
-	err := e.Notifier.Send(ctx, rule.NotifyType, rule.NotifyURL, notify.Message{
+	// A saved channel takes precedence over the legacy inline notify_type/url.
+	channelType, channelURL := rule.NotifyType, rule.NotifyURL
+	if rule.NotifyChannelID != nil && e.Channels != nil && e.Secrets != nil {
+		if ch, err := e.Channels.GetByID(ctx, *rule.NotifyChannelID); err == nil {
+			if plain, derr := e.Secrets.Decrypt(ch.ConfigEnc); derr == nil {
+				cfg := map[string]string{}
+				if json.Unmarshal([]byte(plain), &cfg) == nil {
+					channelType, channelURL = ch.Type, notify.TargetURL(ch.Type, cfg)
+				}
+			}
+		}
+	}
+	if channelType == "" || channelType == "none" {
+		return
+	}
+	err := e.Notifier.Send(ctx, channelType, channelURL, notify.Message{
 		Title:       rule.Name,
 		Service:     service,
 		Metric:      rule.Metric,

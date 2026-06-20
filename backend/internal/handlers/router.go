@@ -103,6 +103,12 @@ func NewRouter(
 			p.GET("/alerts", core.ListAlerts)
 			p.POST("/alerts", core.CreateAlert)
 
+			// notification channels (reusable alert targets)
+			p.GET("/channels", core.ListChannels)
+			p.POST("/channels", core.CreateChannel)
+			p.DELETE("/channels/:channelId", core.DeleteChannel)
+			p.POST("/channels/:channelId/test", core.TestChannel)
+
 			// alert rules (alerting engine)
 			p.GET("/alert-rules", core.ListAlertRules)
 			p.POST("/alert-rules", core.CreateAlertRule)

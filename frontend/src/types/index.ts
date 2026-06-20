@@ -155,6 +155,7 @@ export interface AlertRule {
   type: AlertType;
   notify_type: "none" | "slack" | "telegram" | "webhook";
   notify_url: string;
+  notify_channel_id: string | null;
   enabled: boolean;
   created_at: string;
 }
@@ -167,6 +168,15 @@ export interface IngestKey {
   token?: string; // present only in the create response
   created_at: string;
   last_used_at: string | null;
+}
+
+export interface NotificationChannel {
+  id: string;
+  project_id: string;
+  name: string;
+  type: "slack" | "telegram" | "webhook";
+  hint: string;
+  created_at: string;
 }
 
 export interface TokenPair {

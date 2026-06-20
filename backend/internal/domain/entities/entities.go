@@ -228,15 +228,29 @@ type AlertRule struct {
 	ForSeconds int           `json:"for_seconds"`
 	Severity   AlertSeverity `json:"severity"`
 	Type       AlertType     `json:"type"`
-	NotifyType string        `json:"notify_type"` // none | slack | webhook
-	NotifyURL  string        `json:"notify_url"`
-	Enabled    bool          `json:"enabled"`
+	NotifyType      string     `json:"notify_type"` // none | slack | telegram | webhook (legacy inline)
+	NotifyURL       string     `json:"notify_url"`
+	NotifyChannelID *uuid.UUID `json:"notify_channel_id"` // preferred: a saved channel
+	Enabled         bool       `json:"enabled"`
 
 	BreachingSince *time.Time `json:"-"`
 	ActiveAlertID  *uuid.UUID `json:"-"`
 
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// NotificationChannel is a reusable, project-scoped delivery target. The
+// secret (bot token / webhook URL) is stored encrypted in ConfigEnc and never
+// serialized; the UI gets a non-secret Hint instead.
+type NotificationChannel struct {
+	ID        uuid.UUID `json:"id"`
+	ProjectID uuid.UUID `json:"project_id"`
+	Name      string    `json:"name"`
+	Type      string    `json:"type"` // slack | telegram | webhook
+	ConfigEnc string    `json:"-"`
+	Hint      string    `json:"hint"` // computed, e.g. "chat 12345" or "hooks.slack.com"
+	CreatedAt time.Time `json:"created_at"`
 }
 
 // Breached reports whether value violates the rule's condition.

@@ -73,6 +73,14 @@ type IngestKeyRepository interface {
 	Delete(ctx context.Context, projectID, keyID uuid.UUID) error
 }
 
+// ChannelRepository manages reusable notification channels.
+type ChannelRepository interface {
+	Create(ctx context.Context, ch *entities.NotificationChannel) error
+	ListByProject(ctx context.Context, projectID uuid.UUID) ([]entities.NotificationChannel, error)
+	GetByID(ctx context.Context, id uuid.UUID) (*entities.NotificationChannel, error)
+	Delete(ctx context.Context, projectID, id uuid.UUID) error
+}
+
 // DeploymentRepository manages deployments.
 type DeploymentRepository interface {
 	Create(ctx context.Context, d *entities.Deployment) error

@@ -2,7 +2,9 @@ package handlers
 
 import (
 	"context"
+	"errors"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/acme/observability/internal/agenthub"
@@ -569,6 +571,100 @@ func (h *CoreHandler) InstallBeyla(c *gin.Context) {
 	c.JSON(http.StatusOK, srv)
 }
 
+// ---------- Notification channels ----------
+
+func (h *CoreHandler) ListChannels(c *gin.Context) {
+	projectID, ok := parseUUIDParam(c, "projectId")
+	if !ok {
+		return
+	}
+	chs, err := h.core.ListChannels(c.Request.Context(), middleware.UserID(c), projectID)
+	if err != nil {
+		handleDomainError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"channels": chs})
+}
+
+func (h *CoreHandler) CreateChannel(c *gin.Context) {
+	projectID, ok := parseUUIDParam(c, "projectId")
+	if !ok {
+		return
+	}
+	var req struct {
+		Name   string            `json:"name" binding:"max=120"`
+		Type   string            `json:"type" binding:"required,oneof=slack telegram webhook"`
+		Config map[string]string `json:"config" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		badRequest(c, err)
+		return
+	}
+	if err := validateChannelConfig(req.Type, req.Config); err != nil {
+		badRequest(c, err)
+		return
+	}
+	ch, err := h.core.CreateChannel(c.Request.Context(), middleware.UserID(c), projectID, req.Name, req.Type, req.Config)
+	if err != nil {
+		handleDomainError(c, err)
+		return
+	}
+	c.JSON(http.StatusCreated, ch)
+}
+
+func (h *CoreHandler) DeleteChannel(c *gin.Context) {
+	projectID, ok := parseUUIDParam(c, "projectId")
+	if !ok {
+		return
+	}
+	channelID, ok := parseUUIDParam(c, "channelId")
+	if !ok {
+		return
+	}
+	if err := h.core.DeleteChannel(c.Request.Context(), middleware.UserID(c), projectID, channelID); err != nil {
+		handleDomainError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"ok": true})
+}
+
+// TestChannel sends a sample message; delivery failures surface their message
+// so the user can fix the bot token / chat id.
+func (h *CoreHandler) TestChannel(c *gin.Context) {
+	projectID, ok := parseUUIDParam(c, "projectId")
+	if !ok {
+		return
+	}
+	channelID, ok := parseUUIDParam(c, "channelId")
+	if !ok {
+		return
+	}
+	err := h.core.TestChannel(c.Request.Context(), middleware.UserID(c), projectID, channelID)
+	if err == nil {
+		c.JSON(http.StatusOK, gin.H{"ok": true})
+		return
+	}
+	if errors.Is(err, services.ErrForbidden) {
+		handleDomainError(c, err)
+		return
+	}
+	c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
+}
+
+func validateChannelConfig(ctype string, cfg map[string]string) error {
+	switch ctype {
+	case "telegram":
+		if strings.TrimSpace(cfg["token"]) == "" || strings.TrimSpace(cfg["chat_id"]) == "" {
+			return errors.New("telegram requires token and chat_id")
+		}
+	default: // slack, webhook
+		if strings.TrimSpace(cfg["url"]) == "" {
+			return errors.New(ctype + " requires url")
+		}
+	}
+	return nil
+}
+
 // ---------- Alert rules ----------
 
 func (h *CoreHandler) ListAlertRules(c *gin.Context) {
@@ -607,6 +703,11 @@ func ruleFromRequest(projectID uuid.UUID, req AlertRuleRequest) *entities.AlertR
 	if req.ServiceID != "" {
 		if id, err := uuid.Parse(req.ServiceID); err == nil {
 			rule.ServiceID = &id
+		}
+	}
+	if req.NotifyChannelID != "" {
+		if id, err := uuid.Parse(req.NotifyChannelID); err == nil {
+			rule.NotifyChannelID = &id
 		}
 	}
 	return rule
