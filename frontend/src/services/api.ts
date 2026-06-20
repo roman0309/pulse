@@ -119,6 +119,15 @@ export const api = {
 
   // --- self-update (triggers a detached image pull + container recreate) ---
   selfUpdate: () => request<{ status: string }>("/self-update", { method: "POST" }),
+  updateStatus: () =>
+    request<{
+      enabled: boolean;
+      available: boolean;
+      current: string;
+      latest: string;
+      checked_at: string;
+      error?: string;
+    }>("/self-update/status"),
 
   // --- organizations ---
   listOrgs: () =>

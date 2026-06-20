@@ -607,6 +607,11 @@ func (h *CoreHandler) GetTrace(c *gin.Context) {
 // update button.
 func (h *CoreHandler) SelfUpdateEnabled() bool { return h.core.SelfUpdateAvailable() }
 
+// SelfUpdateStatus reports whether a newer image is available.
+func (h *CoreHandler) SelfUpdateStatus(c *gin.Context) {
+	c.JSON(http.StatusOK, h.core.UpdateStatus(c.Request.Context()))
+}
+
 // SelfUpdate triggers a detached image pull + container recreate. The backend
 // is replaced mid-request, so the client should expect the connection to drop.
 func (h *CoreHandler) SelfUpdate(c *gin.Context) {

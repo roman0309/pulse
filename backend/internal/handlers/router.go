@@ -76,6 +76,7 @@ func NewRouter(
 	authed.Use(middleware.Auth(tokens))
 	{
 		authed.GET("/auth/me", auth.Me)
+		authed.GET("/self-update/status", core.SelfUpdateStatus)
 		authed.POST("/self-update", core.SelfUpdate)
 
 		authed.GET("/organizations", core.ListOrgs)

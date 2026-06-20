@@ -5,6 +5,7 @@ import { RefreshCw, Loader2 } from "lucide-react";
 import { api } from "@/services/api";
 import { toast } from "@/lib/toast";
 import {
+  Badge,
   Button,
   Card,
   CardContent,
@@ -117,12 +118,22 @@ export function SettingsPage() {
 }
 
 // UpdateCard shows an in-app "Update Pulse" button when the backend has the
-// Docker socket wired up (meta.self_update).
+// Docker socket wired up (meta.self_update), and whether a newer image exists.
 function UpdateCard() {
   const meta = useQuery({ queryKey: ["meta"], queryFn: api.meta });
   const [updating, setUpdating] = useState(false);
 
+  const status = useQuery({
+    queryKey: ["update-status"],
+    queryFn: api.updateStatus,
+    enabled: !!meta.data?.self_update,
+    refetchInterval: 5 * 60_000,
+  });
+
   if (meta.isLoading || !meta.data?.self_update) return null;
+
+  const available = status.data?.available ?? false;
+  const short = (d?: string) => (d ? d.replace("sha256:", "").slice(0, 12) : "");
 
   const start = () => {
     if (!confirm("Update Pulse now? The app will pull the latest images and restart (~30–60s).")) return;
@@ -133,10 +144,11 @@ function UpdateCard() {
   };
 
   return (
-    <Card className="mb-6">
+    <Card className={`mb-6 ${available ? "border-primary/40" : ""}`}>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <RefreshCw className="h-4 w-4" /> Updates
+          {available && <Badge tone="info">Update available</Badge>}
         </CardTitle>
       </CardHeader>
       <CardContent>
@@ -147,11 +159,27 @@ function UpdateCard() {
           </div>
         ) : (
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <p className="text-sm text-fg-muted">
-              Pull the latest Pulse images from the registry and recreate the containers.
-            </p>
-            <Button size="sm" onClick={start}>
-              Update now
+            <div className="min-w-0">
+              <p className="text-sm text-fg-muted">
+                Pull the latest Pulse images from the registry and recreate the containers.
+              </p>
+              {status.data && (
+                <p className="mt-1 text-xs">
+                  {available ? (
+                    <span className="text-warning">A newer version is available.</span>
+                  ) : status.data.error ? (
+                    <span className="text-fg-muted">Couldn't check the registry ({status.data.error}).</span>
+                  ) : (
+                    <span className="text-success">You're on the latest version.</span>
+                  )}
+                  {status.data.current && (
+                    <span className="text-fg-muted"> · running {short(status.data.current)}</span>
+                  )}
+                </p>
+              )}
+            </div>
+            <Button size="sm" variant={available ? "primary" : "outline"} onClick={start}>
+              {available ? "Update now" : "Re-pull latest"}
             </Button>
           </div>
         )}

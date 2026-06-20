@@ -90,6 +90,48 @@ func (c *Client) RunDetached(ctx context.Context, image string, cmd, binds []str
 	return created.ID, nil
 }
 
+// SelfImageRef inspects the given container (typically this process's own, by
+// hostname) and returns its image's repository ref and pinned digest, e.g.
+// ("ghcr.io/acme/pulse-backend", "sha256:abc…"). Empty digest means the image
+// has no registry digest (e.g. built locally).
+func (c *Client) SelfImageRef(ctx context.Context, container string) (repo, digest string, err error) {
+	resp, err := c.do(ctx, http.MethodGet, "/containers/"+container+"/json", nil)
+	if err != nil {
+		return "", "", err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return "", "", apiError("inspect container", resp)
+	}
+	var ctr struct {
+		Image string `json:"Image"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&ctr); err != nil {
+		return "", "", err
+	}
+
+	img, err := c.do(ctx, http.MethodGet, "/images/"+ctr.Image+"/json", nil)
+	if err != nil {
+		return "", "", err
+	}
+	defer img.Body.Close()
+	if img.StatusCode != http.StatusOK {
+		return "", "", apiError("inspect image", img)
+	}
+	var meta struct {
+		RepoDigests []string `json:"RepoDigests"`
+	}
+	if err := json.NewDecoder(img.Body).Decode(&meta); err != nil {
+		return "", "", err
+	}
+	for _, rd := range meta.RepoDigests {
+		if i := strings.LastIndex(rd, "@"); i > 0 {
+			return rd[:i], rd[i+1:], nil
+		}
+	}
+	return "", "", nil
+}
+
 func (c *Client) pull(ctx context.Context, image string) {
 	repo, tag := image, "latest"
 	if i := strings.LastIndex(image, ":"); i > strings.LastIndex(image, "/") {

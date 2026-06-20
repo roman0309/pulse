@@ -8,8 +8,10 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"os"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/acme/observability/internal/analyzer"
@@ -56,6 +58,10 @@ type CoreService struct {
 	WatchtowerImage      string
 	DockerSocket         string
 	SelfUpdateContainers []string
+
+	updMu    sync.Mutex
+	updCache *UpdateStatus
+	updAt    time.Time
 }
 
 const agentInstallerURL = "https://raw.githubusercontent.com/roman0309/pulse/main/deploy/install-agent.sh"
@@ -757,6 +763,53 @@ func (s *CoreService) GetTrace(ctx context.Context, userID, projectID uuid.UUID,
 
 // SelfUpdateAvailable reports whether the Docker socket is wired up.
 func (s *CoreService) SelfUpdateAvailable() bool { return s.Docker != nil }
+
+// UpdateStatus reports whether a newer image is available, comparing the
+// running backend image's digest with the registry's :latest. Cached briefly
+// to avoid hammering the registry.
+type UpdateStatus struct {
+	Enabled   bool      `json:"enabled"`
+	Available bool      `json:"available"`
+	Current   string    `json:"current"`
+	Latest    string    `json:"latest"`
+	CheckedAt time.Time `json:"checked_at"`
+	Error     string    `json:"error,omitempty"`
+}
+
+func (s *CoreService) UpdateStatus(ctx context.Context) *UpdateStatus {
+	if s.Docker == nil {
+		return &UpdateStatus{Enabled: false}
+	}
+	s.updMu.Lock()
+	defer s.updMu.Unlock()
+	if s.updCache != nil && time.Since(s.updAt) < 5*time.Minute {
+		return s.updCache
+	}
+
+	st := &UpdateStatus{Enabled: true, CheckedAt: time.Now()}
+	host, _ := os.Hostname()
+	repo, current, err := s.Docker.SelfImageRef(ctx, host)
+	if err != nil && len(s.SelfUpdateContainers) > 0 {
+		repo, current, err = s.Docker.SelfImageRef(ctx, s.SelfUpdateContainers[0])
+	}
+	if err != nil {
+		st.Error = "cannot inspect running image: " + err.Error()
+		s.updCache, s.updAt = st, time.Now()
+		return st
+	}
+	st.Current = current
+	if repo != "" {
+		latest, lerr := dockerapi.LatestManifestDigest(ctx, repo)
+		if lerr != nil {
+			st.Error = "cannot reach registry: " + lerr.Error()
+		} else {
+			st.Latest = latest
+			st.Available = current != "" && latest != "" && current != latest
+		}
+	}
+	s.updCache, s.updAt = st, time.Now()
+	return st
+}
 
 // SelfUpdate launches a detached one-shot watchtower that pulls the newest
 // images and recreates Pulse's own containers. The backend will be replaced
