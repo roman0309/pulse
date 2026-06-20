@@ -107,6 +107,7 @@ func main() {
 	auditRepo := pgrepo.NewAuditRepo(pg)
 	metricRepo := chrepo.NewMetricRepo(ch)
 	logRepo := chrepo.NewLogRepo(ch)
+	spanRepo := chrepo.NewSpanRepo(ch)
 
 	// --- Realtime + agent control hubs ---
 	hub := ws.NewHub()
@@ -128,6 +129,7 @@ func main() {
 		Timeline:    timelineRepo,
 		Metrics:     metricRepo,
 		Logs:        logRepo,
+		Spans:       spanRepo,
 		IngestKeys:      ingestKeyRepo,
 		AlertRules:      alertRuleRepo,
 		Servers:         serverRepo,

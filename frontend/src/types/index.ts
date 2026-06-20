@@ -170,6 +170,30 @@ export interface IngestKey {
   last_used_at: string | null;
 }
 
+export interface TraceSummary {
+  trace_id: string;
+  root_service: string;
+  root_name: string;
+  start_time: string;
+  duration_ms: number;
+  span_count: number;
+  error_count: number;
+}
+
+export interface Span {
+  project_id: string;
+  trace_id: string;
+  span_id: string;
+  parent_id: string;
+  service_name: string;
+  name: string;
+  kind: string;
+  status_code: "unset" | "ok" | "error";
+  start_time: string;
+  duration_ms: number;
+  attributes: string;
+}
+
 export interface NotificationChannel {
   id: string;
   project_id: string;

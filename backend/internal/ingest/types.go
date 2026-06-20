@@ -20,3 +20,17 @@ type RawLog struct {
 	Metadata    string
 	Timestamp   time.Time
 }
+
+// RawSpan is a single decoded tracing span.
+type RawSpan struct {
+	TraceID     string
+	SpanID      string
+	ParentID    string
+	ServiceName string
+	Name        string
+	Kind        string
+	StatusCode  string
+	StartTime   time.Time
+	DurationMS  float64
+	Attributes  string
+}

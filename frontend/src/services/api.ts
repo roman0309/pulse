@@ -9,6 +9,8 @@ import type {
   ManagedServer,
   MetricSeries,
   NotificationChannel,
+  Span,
+  TraceSummary,
   Organization,
   Project,
   RCAResult,
@@ -281,6 +283,26 @@ export const api = {
     }),
   deleteAlertRule: (projectId: string, ruleId: string) =>
     request(`/projects/${projectId}/alert-rules/${ruleId}`, { method: "DELETE" }),
+
+  // --- traces ---
+  listTraces: (
+    projectId: string,
+    params?: { service?: string; limit?: number; from?: string; to?: string }
+  ) => {
+    const qs = new URLSearchParams();
+    if (params?.service) qs.set("service", params.service);
+    if (params?.limit) qs.set("limit", String(params.limit));
+    if (params?.from) qs.set("from", params.from);
+    if (params?.to) qs.set("to", params.to);
+    const suffix = qs.toString() ? `?${qs}` : "";
+    return request<{ traces: TraceSummary[] }>(
+      `/projects/${projectId}/traces${suffix}`
+    ).then((r) => r.traces ?? []);
+  },
+  getTrace: (projectId: string, traceId: string) =>
+    request<{ spans: Span[] }>(
+      `/projects/${projectId}/traces/${traceId}`
+    ).then((r) => r.spans ?? []),
 
   // --- notification channels ---
   listChannels: (projectId: string) =>

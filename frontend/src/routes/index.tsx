@@ -8,6 +8,7 @@ import { OverviewPage } from "@/features/dashboard/OverviewPage";
 import { TimelinePage } from "@/features/timeline/TimelinePage";
 import { MetricsPage } from "@/features/metrics/MetricsPage";
 import { LogsPage } from "@/features/logs/LogsPage";
+import { TracesPage } from "@/features/traces/TracesPage";
 import { AlertsPage } from "@/features/alerts/AlertsPage";
 import { DeploymentsPage } from "@/features/deployments/DeploymentsPage";
 import { ServicesPage } from "@/features/services/ServicesPage";
@@ -36,6 +37,7 @@ export const router = createBrowserRouter([
           { path: "timeline", element: <TimelinePage /> },
           { path: "metrics", element: <MetricsPage /> },
           { path: "logs", element: <LogsPage /> },
+          { path: "traces", element: <TracesPage /> },
           { path: "alerts", element: <AlertsPage /> },
           { path: "deployments", element: <DeploymentsPage /> },
           { path: "services", element: <ServicesPage /> },

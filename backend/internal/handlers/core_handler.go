@@ -571,6 +571,36 @@ func (h *CoreHandler) InstallBeyla(c *gin.Context) {
 	c.JSON(http.StatusOK, srv)
 }
 
+// ---------- Traces ----------
+
+func (h *CoreHandler) ListTraces(c *gin.Context) {
+	projectID, ok := parseUUIDParam(c, "projectId")
+	if !ok {
+		return
+	}
+	from, to := parseTimeRange(c, time.Hour)
+	traces, err := h.core.QueryTraces(c.Request.Context(), middleware.UserID(c), projectID,
+		c.Query("service"), from, to, queryInt(c, "limit", 100))
+	if err != nil {
+		handleDomainError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"traces": traces})
+}
+
+func (h *CoreHandler) GetTrace(c *gin.Context) {
+	projectID, ok := parseUUIDParam(c, "projectId")
+	if !ok {
+		return
+	}
+	spans, err := h.core.GetTrace(c.Request.Context(), middleware.UserID(c), projectID, c.Param("traceId"))
+	if err != nil {
+		handleDomainError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"spans": spans})
+}
+
 // ---------- Notification channels ----------
 
 func (h *CoreHandler) ListChannels(c *gin.Context) {

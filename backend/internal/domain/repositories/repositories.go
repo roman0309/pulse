@@ -115,6 +115,13 @@ type MetricRepository interface {
 	DeleteService(ctx context.Context, projectID, serviceID string) error
 }
 
+// SpanRepository (ClickHouse) stores and queries distributed-tracing spans.
+type SpanRepository interface {
+	Insert(ctx context.Context, spans []entities.Span) error
+	ListTraces(ctx context.Context, projectID, serviceName string, from, to time.Time, limit int) ([]entities.TraceSummary, error)
+	GetTrace(ctx context.Context, projectID, traceID string) ([]entities.Span, error)
+}
+
 // AlertRuleRepository manages alert rule definitions and their evaluator state.
 type AlertRuleRepository interface {
 	Create(ctx context.Context, r *entities.AlertRule) error

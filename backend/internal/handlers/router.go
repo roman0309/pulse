@@ -93,6 +93,8 @@ func NewRouter(
 			p.GET("/analyze", core.Analyze)
 			p.GET("/metrics", core.Metrics)
 			p.GET("/logs", core.Logs)
+			p.GET("/traces", core.ListTraces)
+			p.GET("/traces/:traceId", core.GetTrace)
 
 			p.GET("/services", core.ListServices)
 			p.POST("/services", core.CreateService)

@@ -99,6 +99,32 @@ type AuditEntry struct {
 	CreatedAt time.Time  `json:"created_at"`
 }
 
+// Span is a single operation within a distributed trace.
+type Span struct {
+	ProjectID   string    `json:"project_id"`
+	TraceID     string    `json:"trace_id"`
+	SpanID      string    `json:"span_id"`
+	ParentID    string    `json:"parent_id"`
+	ServiceName string    `json:"service_name"`
+	Name        string    `json:"name"`
+	Kind        string    `json:"kind"`
+	StatusCode  string    `json:"status_code"` // unset | ok | error
+	StartTime   time.Time `json:"start_time"`
+	DurationMS  float64   `json:"duration_ms"`
+	Attributes  string    `json:"attributes"`
+}
+
+// TraceSummary is an aggregate row for the trace list (one per trace_id).
+type TraceSummary struct {
+	TraceID     string    `json:"trace_id"`
+	RootService string    `json:"root_service"`
+	RootName    string    `json:"root_name"`
+	StartTime   time.Time `json:"start_time"`
+	DurationMS  float64   `json:"duration_ms"`
+	SpanCount   int       `json:"span_count"`
+	ErrorCount  int       `json:"error_count"`
+}
+
 // ---------- Projects ----------
 
 type Project struct {

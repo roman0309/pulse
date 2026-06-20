@@ -36,6 +36,7 @@ type CoreService struct {
 	Timeline    repositories.TimelineRepository
 	Metrics     repositories.MetricRepository
 	Logs        repositories.LogRepository
+	Spans       repositories.SpanRepository
 	IngestKeys  repositories.IngestKeyRepository
 	AlertRules  repositories.AlertRuleRepository
 	Servers     repositories.ServerRepository
@@ -723,6 +724,26 @@ func (s *CoreService) IngestMetrics(ctx context.Context, points []entities.Metri
 
 func (s *CoreService) IngestLogs(ctx context.Context, logs []entities.LogEntry) error {
 	return s.Logs.Insert(ctx, logs)
+}
+
+// ---------- Traces ----------
+
+func (s *CoreService) IngestSpans(ctx context.Context, spans []entities.Span) error {
+	return s.Spans.Insert(ctx, spans)
+}
+
+func (s *CoreService) QueryTraces(ctx context.Context, userID, projectID uuid.UUID, serviceName string, from, to time.Time, limit int) ([]entities.TraceSummary, error) {
+	if _, err := s.requireProjectAccess(ctx, userID, projectID); err != nil {
+		return nil, err
+	}
+	return s.Spans.ListTraces(ctx, projectID.String(), serviceName, from, to, limit)
+}
+
+func (s *CoreService) GetTrace(ctx context.Context, userID, projectID uuid.UUID, traceID string) ([]entities.Span, error) {
+	if _, err := s.requireProjectAccess(ctx, userID, projectID); err != nil {
+		return nil, err
+	}
+	return s.Spans.GetTrace(ctx, projectID.String(), traceID)
 }
 
 // ---------- Alert rules ----------

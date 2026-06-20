@@ -85,10 +85,42 @@ func (h *IngestHandler) OTLPLogs(c *gin.Context) {
 	c.JSON(http.StatusAccepted, gin.H{"ingested": len(logs)})
 }
 
-// OTLPTraces handles POST /otlp/v1/traces — accepted but not yet stored (Phase 3).
+// OTLPTraces handles POST /otlp/v1/traces — stores spans for the trace view.
 func (h *IngestHandler) OTLPTraces(c *gin.Context) {
-	_, _ = io.Copy(io.Discard, c.Request.Body)
-	c.JSON(http.StatusAccepted, gin.H{"status": "traces accepted (storage pending)"})
+	body, ok := readBody(c)
+	if !ok {
+		return
+	}
+	raw, err := ingest.DecodeOTLPTraces(body)
+	if err != nil {
+		badRequest(c, err)
+		return
+	}
+	projectID := middleware.IngestProjectID(c)
+	spans := make([]entities.Span, 0, len(raw))
+	for _, s := range raw {
+		if anonService(s.ServiceName) {
+			continue
+		}
+		spans = append(spans, entities.Span{
+			ProjectID:   projectID.String(),
+			TraceID:     s.TraceID,
+			SpanID:      s.SpanID,
+			ParentID:    s.ParentID,
+			ServiceName: s.ServiceName,
+			Name:        s.Name,
+			Kind:        s.Kind,
+			StatusCode:  s.StatusCode,
+			StartTime:   s.StartTime,
+			DurationMS:  s.DurationMS,
+			Attributes:  s.Attributes,
+		})
+	}
+	if err := h.core.IngestSpans(c.Request.Context(), spans); err != nil {
+		serverError(c, err)
+		return
+	}
+	c.JSON(http.StatusAccepted, gin.H{"ingested": len(spans)})
 }
 
 // IngestMetricsJSON handles POST /api/v1/ingest/metrics — a simple key-authed
