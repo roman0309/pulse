@@ -601,6 +601,22 @@ func (h *CoreHandler) GetTrace(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"spans": spans})
 }
 
+// ---------- Self-update ----------
+
+// SelfUpdateEnabled is surfaced via /meta so the UI knows whether to show the
+// update button.
+func (h *CoreHandler) SelfUpdateEnabled() bool { return h.core.SelfUpdateAvailable() }
+
+// SelfUpdate triggers a detached image pull + container recreate. The backend
+// is replaced mid-request, so the client should expect the connection to drop.
+func (h *CoreHandler) SelfUpdate(c *gin.Context) {
+	if err := h.core.SelfUpdate(c.Request.Context()); err != nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusAccepted, gin.H{"status": "update started"})
+}
+
 // ---------- Notification channels ----------
 
 func (h *CoreHandler) ListChannels(c *gin.Context) {

@@ -22,6 +22,7 @@ import (
 	chrepo "github.com/acme/observability/internal/repositories/clickhouse"
 	pgrepo "github.com/acme/observability/internal/repositories/postgres"
 	"github.com/acme/observability/internal/ws"
+	"github.com/acme/observability/pkg/dockerapi"
 	"github.com/acme/observability/pkg/logger"
 	"github.com/acme/observability/pkg/notify"
 	"github.com/acme/observability/pkg/secrets"
@@ -120,6 +121,13 @@ func main() {
 	// hardening still open; new data is encrypted with credentialsKey.
 	secretsBox := secrets.New(credentialsKey, config.LegacyCredentialsKey)
 	notifier := notify.New()
+
+	// Self-update is enabled only when the Docker socket is reachable.
+	var dockerClient *dockerapi.Client
+	if dc := dockerapi.New(cfg.DockerSocket); dc.Ping(ctx) == nil {
+		dockerClient = dc
+		log.Info("self-update enabled", "socket", cfg.DockerSocket)
+	}
 	coreService := &services.CoreService{
 		Orgs:        orgRepo,
 		Projects:    projectRepo,
@@ -141,6 +149,11 @@ func main() {
 		Secrets:         secretsBox,
 		Notifier:        notifier,
 		PublicIngestURL: cfg.PublicIngestURL,
+
+		Docker:               dockerClient,
+		WatchtowerImage:      cfg.WatchtowerImage,
+		DockerSocket:         cfg.DockerSocket,
+		SelfUpdateContainers: cfg.SelfUpdateContainers,
 	}
 
 	// --- Alert evaluator (background) ---

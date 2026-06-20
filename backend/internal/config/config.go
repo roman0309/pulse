@@ -29,6 +29,12 @@ type Config struct {
 	// CredentialsKey encrypts stored SSH credentials and channel secrets at rest.
 	// When empty, the server generates and persists a random key (see main).
 	CredentialsKey string
+
+	// Self-update: when the Docker socket is mounted, Pulse can pull new images
+	// and recreate its own containers via a one-shot watchtower run.
+	DockerSocket         string
+	WatchtowerImage      string
+	SelfUpdateContainers []string
 }
 
 // LegacyCredentialsKey is the historical hard-coded key. It is kept ONLY as a
@@ -54,6 +60,10 @@ func Load() *Config {
 		AgentImage:       getEnv("AGENT_IMAGE", "ghcr.io/roman0309/pulse-agent:latest"),
 		SeedDemo:         getEnv("SEED_DEMO", "false") == "true",
 		CredentialsKey:   getEnv("CREDENTIALS_KEY", ""),
+
+		DockerSocket:         getEnv("DOCKER_SOCKET", "/var/run/docker.sock"),
+		WatchtowerImage:      getEnv("WATCHTOWER_IMAGE", "containrrr/watchtower:latest"),
+		SelfUpdateContainers: strings.Split(getEnv("SELF_UPDATE_CONTAINERS", "pulse-backend,pulse-frontend"), ","),
 	}
 }
 

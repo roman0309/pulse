@@ -39,6 +39,7 @@ func NewRouter(
 		c.JSON(http.StatusOK, gin.H{
 			"ingest_url":  cfg.PublicIngestURL,
 			"agent_image": cfg.AgentImage,
+			"self_update": core.SelfUpdateEnabled(),
 		})
 	})
 
@@ -75,6 +76,7 @@ func NewRouter(
 	authed.Use(middleware.Auth(tokens))
 	{
 		authed.GET("/auth/me", auth.Me)
+		authed.POST("/self-update", core.SelfUpdate)
 
 		authed.GET("/organizations", core.ListOrgs)
 		authed.POST("/organizations", core.CreateOrg)

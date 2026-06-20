@@ -114,7 +114,11 @@ export const api = {
   me: () => request<User>("/auth/me"),
 
   // --- runtime config ---
-  meta: () => request<{ ingest_url: string; agent_image: string }>("/meta"),
+  meta: () =>
+    request<{ ingest_url: string; agent_image: string; self_update: boolean }>("/meta"),
+
+  // --- self-update (triggers a detached image pull + container recreate) ---
+  selfUpdate: () => request<{ status: string }>("/self-update", { method: "POST" }),
 
   // --- organizations ---
   listOrgs: () =>

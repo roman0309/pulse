@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { RefreshCw, Loader2 } from "lucide-react";
 import { api } from "@/services/api";
 import {
   Button,
@@ -82,6 +83,8 @@ export function SettingsPage() {
 
       <NotificationChannels projectId={projectId!} />
 
+      <UpdateCard />
+
       <Card className="border-danger/30">
         <CardHeader>
           <CardTitle className="text-danger">Danger zone</CardTitle>
@@ -107,5 +110,49 @@ export function SettingsPage() {
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+// UpdateCard shows an in-app "Update Pulse" button when the backend has the
+// Docker socket wired up (meta.self_update).
+function UpdateCard() {
+  const meta = useQuery({ queryKey: ["meta"], queryFn: api.meta });
+  const [updating, setUpdating] = useState(false);
+
+  if (meta.isLoading || !meta.data?.self_update) return null;
+
+  const start = () => {
+    if (!confirm("Update Pulse now? The app will pull the latest images and restart (~30–60s).")) return;
+    setUpdating(true);
+    // Fire-and-forget: the backend is recreated mid-request, then reload.
+    api.selfUpdate().catch(() => {});
+    setTimeout(() => window.location.reload(), 45000);
+  };
+
+  return (
+    <Card className="mb-6">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <RefreshCw className="h-4 w-4" /> Updates
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        {updating ? (
+          <div className="flex items-center gap-2 text-sm text-fg-muted">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            Pulling the latest images and restarting… this page will reload automatically.
+          </div>
+        ) : (
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="text-sm text-fg-muted">
+              Pull the latest Pulse images from the registry and recreate the containers.
+            </p>
+            <Button size="sm" onClick={start}>
+              Update now
+            </Button>
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }

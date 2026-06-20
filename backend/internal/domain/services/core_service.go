@@ -17,6 +17,7 @@ import (
 	"github.com/acme/observability/internal/domain/repositories"
 	"github.com/acme/observability/internal/remote"
 	"github.com/acme/observability/internal/ws"
+	"github.com/acme/observability/pkg/dockerapi"
 	"github.com/acme/observability/pkg/hash"
 	"github.com/acme/observability/pkg/notify"
 	"github.com/acme/observability/pkg/secrets"
@@ -49,6 +50,12 @@ type CoreService struct {
 	Notifier    *notify.Notifier
 	// PublicIngestURL is the address agents push to; injected into remote installs.
 	PublicIngestURL string
+
+	// Self-update (optional; nil Docker disables it).
+	Docker               *dockerapi.Client
+	WatchtowerImage      string
+	DockerSocket         string
+	SelfUpdateContainers []string
 }
 
 const agentInstallerURL = "https://raw.githubusercontent.com/roman0309/pulse/main/deploy/install-agent.sh"
@@ -744,6 +751,24 @@ func (s *CoreService) GetTrace(ctx context.Context, userID, projectID uuid.UUID,
 		return nil, err
 	}
 	return s.Spans.GetTrace(ctx, projectID.String(), traceID)
+}
+
+// ---------- Self-update ----------
+
+// SelfUpdateAvailable reports whether the Docker socket is wired up.
+func (s *CoreService) SelfUpdateAvailable() bool { return s.Docker != nil }
+
+// SelfUpdate launches a detached one-shot watchtower that pulls the newest
+// images and recreates Pulse's own containers. The backend will be replaced
+// mid-flight, so this is fire-and-forget.
+func (s *CoreService) SelfUpdate(ctx context.Context) error {
+	if s.Docker == nil {
+		return errors.New("self-update is not enabled (Docker socket not mounted)")
+	}
+	cmd := append([]string{"--run-once", "--cleanup"}, s.SelfUpdateContainers...)
+	binds := []string{s.DockerSocket + ":/var/run/docker.sock"}
+	_, err := s.Docker.RunDetached(ctx, s.WatchtowerImage, cmd, binds)
+	return err
 }
 
 // ---------- Alert rules ----------
