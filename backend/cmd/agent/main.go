@@ -55,6 +55,9 @@ func main() {
 	// status, remove). Best-effort — metrics keep flowing even if it can't connect.
 	go runControl(cfg.endpoint, cfg.key, cfg.service)
 
+	// Ship Docker container logs (best-effort; needs the mounted docker socket).
+	go runLogs(cfg.endpoint, cfg.key)
+
 	// Prime the CPU counter so the first real reading is meaningful.
 	_, _ = cpu.Percent(0, false)
 	time.Sleep(time.Second)
@@ -158,6 +161,139 @@ func post(ctx context.Context, url, key string, body []byte) error {
 type httpError struct{ code int }
 
 func (e *httpError) Error() string { return "unexpected status " + http.StatusText(e.code) }
+
+func postJSON(ctx context.Context, url, key string, body []byte) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Pulse-Key", key)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 300 {
+		return &httpError{resp.StatusCode}
+	}
+	return nil
+}
+
+// ---------- Container log collection ----------
+
+type logLine struct {
+	Service   string `json:"service"`
+	Level     string `json:"level"`
+	Message   string `json:"message"`
+	Timestamp string `json:"timestamp"`
+}
+
+// runLogs ships Docker container logs to Pulse. Best-effort: needs the docker
+// socket (mounted) and CLI (present in the agent image). Each container's logs
+// land under a service named after the container.
+func runLogs(endpoint, key string) {
+	if _, err := dockerOut("version", "--format", "{{.Server.Version}}"); err != nil {
+		log.Printf("logs: docker unavailable, skipping container log collection")
+		return
+	}
+	log.Printf("logs: collecting container logs")
+	cursors := map[string]time.Time{}
+	t := time.NewTicker(10 * time.Second)
+	defer t.Stop()
+	for {
+		collectLogs(endpoint, key, cursors)
+		<-t.C
+	}
+}
+
+func collectLogs(endpoint, key string, cursors map[string]time.Time) {
+	out, err := dockerOut("ps", "--format", "{{.Names}}")
+	if err != nil {
+		return
+	}
+	var batch []logLine
+	for _, name := range strings.Fields(out) {
+		if name == "pulse-agent" {
+			continue // don't ship our own logs
+		}
+		since := cursors[name]
+		if since.IsZero() {
+			since = time.Now().Add(-1 * time.Minute)
+		}
+		raw, err := dockerOut("logs", "--since", since.Format(time.RFC3339Nano), "--timestamps", "--tail", "500", name)
+		if err != nil {
+			continue
+		}
+		for _, line := range strings.Split(raw, "\n") {
+			ts, msg, ok := parseLogLine(line)
+			if !ok || !ts.After(since) {
+				continue
+			}
+			batch = append(batch, logLine{
+				Service:   name,
+				Level:     detectLevel(msg),
+				Message:   truncate(msg, 4000),
+				Timestamp: ts.UTC().Format(time.RFC3339Nano),
+			})
+			if ts.After(cursors[name]) {
+				cursors[name] = ts
+			}
+		}
+		if len(batch) >= 1000 {
+			break
+		}
+	}
+	if len(batch) == 0 {
+		return
+	}
+	body, err := json.Marshal(map[string]any{"logs": batch})
+	if err != nil {
+		return
+	}
+	if err := postJSON(context.Background(), endpoint+"/api/v1/ingest/logs", key, body); err != nil {
+		log.Printf("logs push error: %v", err)
+		return
+	}
+	log.Printf("pushed %d logs", len(batch))
+}
+
+// parseLogLine splits a `docker logs --timestamps` line into its RFC3339
+// timestamp and the message.
+func parseLogLine(line string) (time.Time, string, bool) {
+	line = strings.TrimRight(line, "\r")
+	if line == "" {
+		return time.Time{}, "", false
+	}
+	sp := strings.IndexByte(line, ' ')
+	if sp < 0 {
+		return time.Time{}, "", false
+	}
+	ts, err := time.Parse(time.RFC3339Nano, line[:sp])
+	if err != nil {
+		return time.Time{}, "", false
+	}
+	return ts, line[sp+1:], true
+}
+
+func detectLevel(msg string) string {
+	m := strings.ToLower(msg)
+	switch {
+	case strings.Contains(m, "error") || strings.Contains(m, "fatal") || strings.Contains(m, "panic") || strings.Contains(m, "[err"):
+		return "error"
+	case strings.Contains(m, "warn"):
+		return "warning"
+	default:
+		return "info"
+	}
+}
+
+func truncate(s string, n int) string {
+	if len(s) > n {
+		return s[:n]
+	}
+	return s
+}
 
 // ---------- Control channel ----------
 

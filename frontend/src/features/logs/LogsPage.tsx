@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
-import { Search } from "lucide-react";
+import { Search, ScrollText } from "lucide-react";
 import { api } from "@/services/api";
 import { Card, Input, Select } from "@/components/ui/primitives";
 import { PageHeader, Spinner, EmptyState, TimeRangeControl } from "@/components/common";
@@ -101,7 +101,11 @@ export function LogsPage() {
             <Spinner />
           </div>
         ) : logs.length === 0 ? (
-          <EmptyState title="No logs found" description="Try adjusting your filters." />
+          <EmptyState
+            icon={<ScrollText className="h-7 w-7" />}
+            title="No logs in this window"
+            description="The host agent ships your containers' logs automatically. Widen the time range or clear filters — or send app logs via OTLP (/otlp/v1/logs)."
+          />
         ) : (
           <div className="divide-y divide-border font-mono text-xs">
             {logs.map((l, i) => (

@@ -152,6 +152,59 @@ func (h *IngestHandler) IngestMetricsJSON(c *gin.Context) {
 	h.writeMetrics(c, raw)
 }
 
+// IngestLogsJSON handles POST /api/v1/ingest/logs — a simple key-authed JSON
+// push, used by the host agent to ship container logs. Body:
+//
+//	{"logs":[{"service":"gateway","level":"error","message":"…","timestamp":"…"}]}
+func (h *IngestHandler) IngestLogsJSON(c *gin.Context) {
+	var req struct {
+		Logs []struct {
+			Service   string `json:"service" binding:"required"`
+			Level     string `json:"level"`
+			Message   string `json:"message"`
+			Timestamp string `json:"timestamp"`
+		} `json:"logs" binding:"required,dive"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		badRequest(c, err)
+		return
+	}
+	projectID := middleware.IngestProjectID(c)
+	cache := newServiceCache(h.core, projectID)
+	logs := make([]entities.LogEntry, 0, len(req.Logs))
+	for _, l := range req.Logs {
+		if anonService(l.Service) {
+			continue
+		}
+		sid, name := cache.resolve(c, l.Service)
+		logs = append(logs, entities.LogEntry{
+			ProjectID:   projectID.String(),
+			ServiceID:   sid.String(),
+			ServiceName: name,
+			Level:       normalizeLevel(l.Level),
+			Message:     l.Message,
+			Metadata:    "{}",
+			Timestamp:   parseTimestamp(l.Timestamp),
+		})
+	}
+	if err := h.core.IngestLogs(c.Request.Context(), logs); err != nil {
+		serverError(c, err)
+		return
+	}
+	c.JSON(http.StatusAccepted, gin.H{"ingested": len(logs)})
+}
+
+func normalizeLevel(level string) string {
+	switch strings.ToLower(strings.TrimSpace(level)) {
+	case "error", "err", "fatal", "panic", "critical":
+		return "error"
+	case "warn", "warning":
+		return "warning"
+	default:
+		return "info"
+	}
+}
+
 // PromRemoteWrite handles POST /api/v1/prom/write
 func (h *IngestHandler) PromRemoteWrite(c *gin.Context) {
 	body, ok := readBody(c)

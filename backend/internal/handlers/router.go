@@ -53,6 +53,7 @@ func NewRouter(
 		ingestGroup.POST("/otlp/v1/traces", ingest.OTLPTraces)
 		ingestGroup.POST("/api/v1/prom/write", ingest.PromRemoteWrite)
 		ingestGroup.POST("/api/v1/ingest/metrics", ingest.IngestMetricsJSON)
+		ingestGroup.POST("/api/v1/ingest/logs", ingest.IngestLogsJSON)
 		// agent control channel (agent dials out; key-authed)
 		ingestGroup.GET("/api/v1/agent/connect", core.AgentConnect)
 	}
