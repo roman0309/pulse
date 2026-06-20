@@ -117,11 +117,11 @@ export function TimelinePage() {
                   <div className="text-xs text-fg-muted">confidence</div>
                 </div>
               </div>
-              {rca.data.evidence.length > 0 && (
+              {(rca.data.evidence?.length ?? 0) > 0 && (
                 <div className="mt-4 border-t border-border pt-3">
                   <p className="mb-2 text-xs font-medium text-fg-muted">Evidence</p>
                   <ul className="space-y-1">
-                    {rca.data.evidence.map((e, i) => (
+                    {(rca.data.evidence ?? []).map((e, i) => (
                       <li key={i} className="flex gap-2 text-xs text-fg-muted">
                         <span className="text-primary">→</span>
                         {e}

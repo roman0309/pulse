@@ -14,6 +14,7 @@ import { DeploymentsPage } from "@/features/deployments/DeploymentsPage";
 import { ServicesPage } from "@/features/services/ServicesPage";
 import { ConnectPage } from "@/features/connect/ConnectPage";
 import { SettingsPage } from "@/features/projects/SettingsPage";
+import { RouteError } from "@/components/common/RouteError";
 
 function RequireAuth() {
   const token = useAuthStore((s) => s.accessToken);
@@ -31,6 +32,7 @@ export const router = createBrowserRouter([
       {
         path: "/projects/:projectId",
         element: <AppLayout />,
+        errorElement: <RouteError />,
         children: [
           { index: true, element: <Navigate to="overview" replace /> },
           { path: "overview", element: <OverviewPage /> },
