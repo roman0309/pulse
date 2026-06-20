@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"net/http"
 	"os"
@@ -59,6 +61,37 @@ func main() {
 	}
 	log.Info("migrations applied", "seed_demo", cfg.SeedDemo)
 
+	// --- Secrets (no shipped defaults) ---
+	// Use the env value when set; otherwise generate a strong key once and
+	// persist it so it survives restarts. This removes the hard-coded fallback
+	// that previously protected JWTs and stored SSH/channel secrets.
+	resolveSecret := func(name, envValue string) string {
+		if envValue != "" {
+			return envValue
+		}
+		b := make([]byte, 32)
+		if _, err := rand.Read(b); err != nil {
+			log.Error("generate secret failed", "name", name, "err", err)
+			os.Exit(1)
+		}
+		v, err := pgrepo.GetOrCreateAppSecret(ctx, pg, name, hex.EncodeToString(b))
+		if err != nil {
+			log.Error("resolve secret failed", "name", name, "err", err)
+			os.Exit(1)
+		}
+		log.Info("using managed secret", "name", name)
+		return v
+	}
+	jwtSecret := resolveSecret("jwt_secret", cfg.JWTSecret)
+	refreshSecret := resolveSecret("jwt_refresh_secret", cfg.JWTRefreshSecret)
+	// Credentials key keeps its historical default (the JWT secret) so existing
+	// encrypted data still opens — but that's now always strong. Operators can
+	// set CREDENTIALS_KEY to separate the two.
+	credentialsKey := cfg.CredentialsKey
+	if credentialsKey == "" {
+		credentialsKey = jwtSecret
+	}
+
 	// --- Repositories ---
 	userRepo := pgrepo.NewUserRepo(pg)
 	orgRepo := pgrepo.NewOrgRepo(pg)
@@ -80,9 +113,11 @@ func main() {
 	agentControl := agenthub.New()
 
 	// --- Services (dependency injection) ---
-	tokens := services.NewTokenService(cfg.JWTSecret, cfg.JWTRefreshSecret, cfg.AccessTTL, cfg.RefreshTTL)
+	tokens := services.NewTokenService(jwtSecret, refreshSecret, cfg.AccessTTL, cfg.RefreshTTL)
 	authService := services.NewAuthService(userRepo, tokens)
-	secretsBox := secrets.New(cfg.CredentialsKey)
+	// Legacy key kept as a decryption fallback so secrets written before key
+	// hardening still open; new data is encrypted with credentialsKey.
+	secretsBox := secrets.New(credentialsKey, config.LegacyCredentialsKey)
 	notifier := notify.New()
 	coreService := &services.CoreService{
 		Orgs:        orgRepo,
