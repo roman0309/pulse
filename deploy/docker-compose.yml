@@ -54,10 +54,12 @@ services:
       - SEED_DEMO=${SEED_DEMO:-false}
     ports:
       - "8080:8080"
-    # Mounting the Docker socket enables the in-app "Update Pulse" button
-    # (a one-shot watchtower pulls new images and recreates the containers).
-    # This grants the backend root-equivalent control of the host — remove the
-    # mount to disable self-update. Server management still uses SSH creds.
+    # The in-app "Update Pulse" button needs Docker access: mount the host
+    # socket AND run as root so the (otherwise non-root) image can use it.
+    # The socket already grants root-equivalent control of the host, so this
+    # adds no extra risk. Remove both lines to disable self-update — server
+    # management still works over SSH.
+    user: "0:0"
     volumes:
       - ${DOCKER_SOCKET:-/var/run/docker.sock}:/var/run/docker.sock
     depends_on:
