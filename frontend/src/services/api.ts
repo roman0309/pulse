@@ -216,6 +216,8 @@ export const api = {
       search?: string;
       limit?: number;
       offset?: number;
+      from?: string;
+      to?: string;
     } = {}
   ) =>
     request<{ logs: LogEntry[] }>(
@@ -225,6 +227,8 @@ export const api = {
         search: opts.search,
         limit: opts.limit,
         offset: opts.offset,
+        from: opts.from,
+        to: opts.to,
       })}`
     ).then((r) => r.logs ?? []),
 

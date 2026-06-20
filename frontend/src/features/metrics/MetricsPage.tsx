@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, useSearchParams } from "react-router-dom";
 import { useQuery, useQueries } from "@tanstack/react-query";
 import { api } from "@/services/api";
 import {
@@ -9,16 +9,10 @@ import {
   CardTitle,
   Select,
 } from "@/components/ui/primitives";
-import { PageHeader, Spinner } from "@/components/common";
+import { PageHeader, Spinner, TimeRangeControl } from "@/components/common";
 import { MetricChart } from "@/components/common/MetricChart";
+import { rangeWindow, useRangeStore } from "@/store/range";
 import { METRIC_NAMES } from "@/types";
-
-const RANGES = [
-  { label: "Last 30m", minutes: 30, step: 30 },
-  { label: "Last 1h", minutes: 60, step: 60 },
-  { label: "Last 3h", minutes: 180, step: 120 },
-  { label: "Last 24h", minutes: 1440, step: 600 },
-];
 
 const METRIC_META: Record<string, { label: string; unit: string }> = {
   cpu_usage: { label: "CPU Usage", unit: "%" },
@@ -33,27 +27,26 @@ const METRIC_META: Record<string, { label: string; unit: string }> = {
 
 export function MetricsPage() {
   const { projectId } = useParams();
-  const [serviceId, setServiceId] = useState("");
-  const [rangeIdx, setRangeIdx] = useState(1);
-  const [live, setLive] = useState(true);
-  const range = RANGES[rangeIdx];
+  const [searchParams] = useSearchParams();
+  const [serviceId, setServiceId] = useState(searchParams.get("service") ?? "");
+  const { range, live } = useRangeStore();
 
   const services = useQuery({
     queryKey: ["services", projectId],
     queryFn: () => api.listServices(projectId!),
   });
 
-  const from = new Date(Date.now() - range.minutes * 60000).toISOString();
-
   const results = useQueries({
     queries: METRIC_NAMES.map((metric) => ({
-      queryKey: ["metric", projectId, metric, serviceId, rangeIdx],
-      queryFn: () =>
-        api.metrics(projectId!, metric, {
+      queryKey: ["metric", projectId, metric, serviceId, range],
+      queryFn: () => {
+        const w = rangeWindow(range);
+        return api.metrics(projectId!, metric, {
           serviceId: serviceId || undefined,
-          from,
-          step: range.step,
-        }),
+          from: w.from,
+          step: w.step,
+        });
+      },
       refetchInterval: live ? 15000 : false,
     })),
   });
@@ -69,10 +62,7 @@ export function MetricsPage() {
         description="Live time-series across all your services"
         actions={
           <div className="flex items-center gap-2">
-            <Select
-              value={serviceId}
-              onChange={(e) => setServiceId(e.target.value)}
-            >
+            <Select value={serviceId} onChange={(e) => setServiceId(e.target.value)}>
               <option value="">All services</option>
               {services.data?.map((s) => (
                 <option key={s.id} value={s.id}>
@@ -80,29 +70,7 @@ export function MetricsPage() {
                 </option>
               ))}
             </Select>
-            <Select
-              value={rangeIdx}
-              onChange={(e) => setRangeIdx(Number(e.target.value))}
-            >
-              {RANGES.map((r, i) => (
-                <option key={i} value={i}>
-                  {r.label}
-                </option>
-              ))}
-            </Select>
-            <button
-              onClick={() => setLive((v) => !v)}
-              className={`flex items-center gap-1.5 rounded-md border px-3 h-9 text-sm transition ${
-                live
-                  ? "border-success/40 text-success"
-                  : "border-border text-fg-muted"
-              }`}
-            >
-              <span
-                className={`h-2 w-2 rounded-full ${live ? "bg-success animate-pulse" : "bg-fg-muted"}`}
-              />
-              Live
-            </button>
+            <TimeRangeControl />
           </div>
         }
       />

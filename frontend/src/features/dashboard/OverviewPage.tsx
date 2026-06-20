@@ -1,5 +1,5 @@
-import { useParams } from "react-router-dom";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link, useParams } from "react-router-dom";
+import { useQuery, useQueries, useQueryClient } from "@tanstack/react-query";
 import {
   Activity,
   AlertTriangle,
@@ -14,14 +14,17 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/primitives";
-import { PageHeader, Spinner } from "@/components/common";
+import { PageHeader, Spinner, TimeRangeControl, ServiceStatusDot } from "@/components/common";
 import { TimelineFeed } from "@/features/timeline/TimelineFeed";
 import { MetricChart } from "@/components/common/MetricChart";
+import { rangeWindow, useRangeStore } from "@/store/range";
 import { relativeTime } from "@/lib/utils";
+import type { Service } from "@/types";
 
 export function OverviewPage() {
   const { projectId } = useParams();
   const qc = useQueryClient();
+  const { range, live } = useRangeStore();
 
   const dashboard = useQuery({
     queryKey: ["dashboard", projectId],
@@ -37,8 +40,12 @@ export function OverviewPage() {
     queryFn: () => api.listServices(projectId!),
   });
   const latency = useQuery({
-    queryKey: ["overview-latency", projectId],
-    queryFn: () => api.metrics(projectId!, "latency_p95", { step: 120 }),
+    queryKey: ["overview-latency", projectId, range],
+    queryFn: () => {
+      const w = rangeWindow(range);
+      return api.metrics(projectId!, "latency_p95", { from: w.from, step: w.step });
+    },
+    refetchInterval: live ? 15000 : false,
   });
   const logs = useQuery({
     queryKey: ["overview-logs", projectId],
@@ -68,6 +75,7 @@ export function OverviewPage() {
       <PageHeader
         title="Overview"
         description="System health and recent activity at a glance"
+        actions={<TimeRangeControl />}
       />
 
       {/* Top stats */}
@@ -97,6 +105,11 @@ export function OverviewPage() {
           value={d ? `${d.error_rate.toFixed(1)}%` : "—"}
         />
       </div>
+
+      {/* Services at a glance */}
+      {(services.data?.length ?? 0) > 0 && (
+        <ServiceGrid projectId={projectId!} services={services.data!} />
+      )}
 
       <div className="grid lg:grid-cols-3 gap-6">
         {/* Timeline (center, most important) */}
@@ -185,5 +198,77 @@ function Stat({
         <p className="text-2xl font-semibold text-fg mt-2">{value}</p>
       </CardContent>
     </Card>
+  );
+}
+
+function ServiceGrid({ projectId, services }: { projectId: string; services: Service[] }) {
+  const { range, live } = useRangeStore();
+  const results = useQueries({
+    queries: services.map((s) => ({
+      queryKey: ["svc-latency", projectId, s.id, range],
+      queryFn: () => {
+        const w = rangeWindow(range);
+        return api.metrics(projectId, "latency_p95", { serviceId: s.id, from: w.from, step: w.step });
+      },
+      refetchInterval: live ? 30000 : false,
+    })),
+  });
+
+  return (
+    <div className="mb-6">
+      <h2 className="mb-2 text-sm font-semibold text-fg">Services</h2>
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {services.map((s, i) => {
+          const points = results[i].data?.[0]?.points ?? [];
+          const last = points.length ? points[points.length - 1].value : null;
+          return (
+            <Card key={s.id} className="p-3">
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium text-fg">{s.name}</p>
+                  <p className="text-[11px] text-fg-muted">{s.environment}</p>
+                </div>
+                <ServiceStatusDot status={s.status} />
+              </div>
+              <div className="mt-2 flex items-end gap-2">
+                <Sparkline points={points} />
+                <span className="shrink-0 font-mono text-xs text-fg-muted">
+                  {last != null ? `${last.toFixed(0)}ms` : "—"}
+                </span>
+              </div>
+              <div className="mt-2 flex gap-3 text-[11px]">
+                <Link to={`/projects/${projectId}/metrics?service=${s.id}`} className="text-primary hover:underline">
+                  Metrics
+                </Link>
+                <Link to={`/projects/${projectId}/logs?service=${s.id}`} className="text-primary hover:underline">
+                  Logs
+                </Link>
+              </div>
+            </Card>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function Sparkline({ points }: { points: { value: number }[] }) {
+  if (points.length < 2) return <div className="h-8 flex-1" />;
+  const vals = points.map((p) => p.value);
+  const min = Math.min(...vals);
+  const span = Math.max(...vals) - min || 1;
+  const w = 120;
+  const h = 32;
+  const d = points
+    .map((p, i) => {
+      const x = (i / (points.length - 1)) * w;
+      const y = h - ((p.value - min) / span) * h;
+      return `${i === 0 ? "M" : "L"}${x.toFixed(1)},${y.toFixed(1)}`;
+    })
+    .join(" ");
+  return (
+    <svg viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" className="h-8 flex-1 text-primary">
+      <path d={d} fill="none" stroke="currentColor" strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
+    </svg>
   );
 }

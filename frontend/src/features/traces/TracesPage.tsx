@@ -3,17 +3,11 @@ import { useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { ChevronLeft, Network, AlertTriangle } from "lucide-react";
 import { api } from "@/services/api";
-import { Badge, Card, CardContent, Select } from "@/components/ui/primitives";
-import { PageHeader, Spinner, EmptyState } from "@/components/common";
-import { relativeTime } from "@/lib/utils";
+import { Badge, Card, CardContent } from "@/components/ui/primitives";
+import { PageHeader, Spinner, EmptyState, TimeRangeControl } from "@/components/common";
+import { cn, relativeTime } from "@/lib/utils";
+import { rangeWindow, useRangeStore } from "@/store/range";
 import type { Span, TraceSummary } from "@/types";
-
-const RANGES: Record<string, number> = {
-  "15m": 15 * 60_000,
-  "1h": 60 * 60_000,
-  "6h": 6 * 60 * 60_000,
-  "24h": 24 * 60 * 60_000,
-};
 
 const PALETTE = ["#6366f1", "#10b981", "#f59e0b", "#ec4899", "#06b6d4", "#a855f7", "#ef4444", "#84cc16"];
 function serviceColor(name: string) {
@@ -30,15 +24,13 @@ function fmtMs(ms: number) {
 
 export function TracesPage() {
   const { projectId } = useParams();
-  const [range, setRange] = useState("1h");
+  const { range, live } = useRangeStore();
   const [selected, setSelected] = useState<string | null>(null);
-
-  const from = useMemo(() => new Date(Date.now() - RANGES[range]).toISOString(), [range]);
 
   const traces = useQuery({
     queryKey: ["traces", projectId, range],
-    queryFn: () => api.listTraces(projectId!, { from, limit: 100 }),
-    refetchInterval: 15_000,
+    queryFn: () => api.listTraces(projectId!, { from: rangeWindow(range).from, limit: 100 }),
+    refetchInterval: live ? 15_000 : false,
     enabled: !selected,
   });
 
@@ -51,15 +43,7 @@ export function TracesPage() {
       <PageHeader
         title="Traces"
         description="Distributed request traces (zero-code via Beyla or any OpenTelemetry SDK)"
-        actions={
-          <Select value={range} onChange={(e) => setRange(e.target.value)} className="w-28">
-            {Object.keys(RANGES).map((r) => (
-              <option key={r} value={r}>
-                Last {r}
-              </option>
-            ))}
-          </Select>
-        }
+        actions={<TimeRangeControl />}
       />
 
       {traces.isLoading ? (
@@ -132,47 +116,127 @@ function TraceDetail({ projectId, traceId, onBack }: { projectId: string; traceI
 
 function Waterfall({ spans }: { spans: Span[] }) {
   const { ordered, depthOf, traceStart, total } = useMemo(() => layout(spans), [spans]);
+  const [sel, setSel] = useState<Span | null>(null);
+  const ticks = [0, 0.25, 0.5, 0.75, 1];
 
   return (
-    <Card>
-      <CardContent className="p-0">
-        <div className="border-b border-border px-4 py-2.5 text-xs text-fg-muted">
-          {spans.length} spans · {fmtMs(total)} total
-        </div>
-        <div className="divide-y divide-border/60">
-          {ordered.map((s) => {
-            const leftMs = new Date(s.start_time).getTime() - traceStart;
-            const left = total > 0 ? (leftMs / total) * 100 : 0;
-            const width = total > 0 ? Math.max((s.duration_ms / total) * 100, 0.5) : 0.5;
-            const isErr = s.status_code === "error";
-            const color = isErr ? "var(--color-danger, #ef4444)" : serviceColor(s.service_name);
-            return (
-              <div key={s.span_id} className="flex items-center gap-3 px-4 py-1.5">
-                <div className="w-1/3 min-w-0" style={{ paddingLeft: depthOf(s) * 14 }}>
-                  <div className="flex items-center gap-1.5">
-                    {isErr && <AlertTriangle className="h-3 w-3 shrink-0 text-danger" />}
-                    <span className="truncate text-xs font-medium text-fg" title={s.name}>
-                      {s.name}
+    <div className="space-y-3">
+      <Card>
+        <CardContent className="p-0">
+          <div className="flex items-center justify-between border-b border-border px-4 py-2.5 text-xs text-fg-muted">
+            <span>{spans.length} spans</span>
+            <span className="font-mono">{fmtMs(total)} total</span>
+          </div>
+
+          {/* Time ruler */}
+          <div className="flex items-center gap-3 px-4 pt-2">
+            <div className="w-1/3" />
+            <div className="relative h-4 flex-1">
+              {ticks.map((t) => (
+                <span
+                  key={t}
+                  className="absolute top-0 -translate-x-1/2 text-[10px] text-fg-muted first:translate-x-0 last:-translate-x-full"
+                  style={{ left: `${t * 100}%` }}
+                >
+                  {fmtMs(total * t)}
+                </span>
+              ))}
+            </div>
+          </div>
+
+          <div className="divide-y divide-border/60 pb-1">
+            {ordered.map((s) => {
+              const leftMs = new Date(s.start_time).getTime() - traceStart;
+              const left = total > 0 ? (leftMs / total) * 100 : 0;
+              const width = total > 0 ? Math.max((s.duration_ms / total) * 100, 0.5) : 0.5;
+              const isErr = s.status_code === "error";
+              const color = isErr ? "var(--color-danger, #ef4444)" : serviceColor(s.service_name);
+              return (
+                <button
+                  key={s.span_id}
+                  onClick={() => setSel(s)}
+                  className={cn(
+                    "flex w-full items-center gap-3 px-4 py-1.5 text-left transition hover:bg-surface-2",
+                    sel?.span_id === s.span_id && "bg-surface-2"
+                  )}
+                >
+                  <div className="w-1/3 min-w-0" style={{ paddingLeft: depthOf(s) * 14 }}>
+                    <div className="flex items-center gap-1.5">
+                      {isErr && <AlertTriangle className="h-3 w-3 shrink-0 text-danger" />}
+                      <span className="truncate text-xs font-medium text-fg" title={s.name}>
+                        {s.name}
+                      </span>
+                    </div>
+                    <span className="truncate text-[11px] text-fg-muted">{s.service_name}</span>
+                  </div>
+                  <div className="relative h-5 flex-1 rounded bg-surface-2">
+                    <div className="absolute top-0 h-full rounded" style={{ left: `${left}%`, width: `${width}%`, background: color }} />
+                    <span
+                      className="absolute top-1/2 -translate-y-1/2 whitespace-nowrap px-1 text-[10px] text-fg-muted"
+                      style={{ left: `clamp(0%, ${left}%, 88%)` }}
+                    >
+                      {fmtMs(s.duration_ms)}
                     </span>
                   </div>
-                  <span className="truncate text-[11px] text-fg-muted">{s.service_name}</span>
-                </div>
-                <div className="relative h-5 flex-1 rounded bg-surface-2">
-                  <div
-                    className="absolute top-0 h-full rounded"
-                    style={{ left: `${left}%`, width: `${width}%`, background: color }}
-                  />
-                  <span
-                    className="absolute top-1/2 -translate-y-1/2 whitespace-nowrap px-1 text-[10px] text-fg-muted"
-                    style={{ left: `clamp(0%, ${left}%, 88%)` }}
-                  >
-                    {fmtMs(s.duration_ms)}
-                  </span>
-                </div>
-              </div>
-            );
-          })}
+                </button>
+              );
+            })}
+          </div>
+        </CardContent>
+      </Card>
+
+      {sel && <SpanDetail span={sel} traceStart={traceStart} onClose={() => setSel(null)} />}
+    </div>
+  );
+}
+
+function SpanDetail({ span, traceStart, onClose }: { span: Span; traceStart: number; onClose: () => void }) {
+  let attrs: Record<string, unknown> = {};
+  try {
+    attrs = JSON.parse(span.attributes || "{}");
+  } catch {
+    attrs = {};
+  }
+  const offset = new Date(span.start_time).getTime() - traceStart;
+  const rows: [string, string][] = [
+    ["Service", span.service_name],
+    ["Kind", span.kind],
+    ["Status", span.status_code],
+    ["Duration", fmtMs(span.duration_ms)],
+    ["Start offset", `+${fmtMs(offset)}`],
+    ["Span ID", span.span_id],
+    ["Parent ID", span.parent_id || "—"],
+  ];
+  return (
+    <Card>
+      <CardContent className="p-4">
+        <div className="mb-2 flex items-start justify-between gap-2">
+          <p className="break-all text-sm font-medium text-fg">{span.name}</p>
+          <button onClick={onClose} className="shrink-0 text-fg-muted transition hover:text-fg">
+            <ChevronLeft className="h-4 w-4 rotate-90" />
+          </button>
         </div>
+        <div className="grid grid-cols-1 gap-x-6 gap-y-1 sm:grid-cols-2">
+          {rows.map(([k, v]) => (
+            <div key={k} className="flex justify-between gap-3 border-b border-border/40 py-1 text-xs">
+              <span className="text-fg-muted">{k}</span>
+              <span className="break-all text-right font-mono text-fg">{v}</span>
+            </div>
+          ))}
+        </div>
+        {Object.keys(attrs).length > 0 && (
+          <div className="mt-3">
+            <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-fg-muted">Attributes</p>
+            <div className="grid grid-cols-1 gap-x-6 gap-y-0.5 sm:grid-cols-2">
+              {Object.entries(attrs).map(([k, v]) => (
+                <div key={k} className="flex justify-between gap-3 py-0.5 text-xs">
+                  <span className="break-all text-fg-muted">{k}</span>
+                  <span className="break-all text-right font-mono text-fg">{String(v)}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </CardContent>
     </Card>
   );

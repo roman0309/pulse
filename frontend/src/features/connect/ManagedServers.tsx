@@ -24,6 +24,7 @@ import {
 } from "lucide-react";
 import { cn, relativeTime } from "@/lib/utils";
 import { api } from "@/services/api";
+import { toast } from "@/lib/toast";
 import {
   Button,
   Card,
@@ -69,7 +70,10 @@ export function ManagedServers({ projectId }: { projectId: string }) {
 
   const del = useMutation({
     mutationFn: (id: string) => api.deleteServer(projectId, id),
-    onSuccess: invalidate,
+    onSuccess: () => {
+      invalidate();
+      toast.success("Server removed");
+    },
   });
 
   const count = servers.data?.length ?? 0;
@@ -489,7 +493,10 @@ function AddServerModal({
         auth_method: f.auth_method,
         secret: f.secret.trim(),
       }),
-    onSuccess: onAdded,
+    onSuccess: () => {
+      toast.success("Server added");
+      onAdded();
+    },
     onError: (e) => setErr(e instanceof Error ? e.message : "failed"),
   });
 

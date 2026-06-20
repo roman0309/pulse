@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, useSearchParams } from "react-router-dom";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { Search } from "lucide-react";
 import { api } from "@/services/api";
 import { Card, Input, Select } from "@/components/ui/primitives";
-import { PageHeader, Spinner, EmptyState } from "@/components/common";
+import { PageHeader, Spinner, EmptyState, TimeRangeControl } from "@/components/common";
 import { formatDateTime } from "@/lib/utils";
+import { rangeWindow, useRangeStore } from "@/store/range";
 
 const PAGE = 50;
 
@@ -14,7 +15,9 @@ export function LogsPage() {
   const [search, setSearch] = useState("");
   const [debounced, setDebounced] = useState("");
   const [level, setLevel] = useState("");
-  const [serviceId, setServiceId] = useState("");
+  const [searchParams] = useSearchParams();
+  const [serviceId, setServiceId] = useState(searchParams.get("service") ?? "");
+  const { range } = useRangeStore();
   const sentinel = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -28,12 +31,13 @@ export function LogsPage() {
   });
 
   const query = useInfiniteQuery({
-    queryKey: ["logs", projectId, debounced, level, serviceId],
+    queryKey: ["logs", projectId, debounced, level, serviceId, range],
     queryFn: ({ pageParam = 0 }) =>
       api.logs(projectId!, {
         search: debounced || undefined,
         level: level || undefined,
         serviceId: serviceId || undefined,
+        from: rangeWindow(range).from,
         limit: PAGE,
         offset: pageParam,
       }),
@@ -62,6 +66,7 @@ export function LogsPage() {
       <PageHeader
         title="Logs"
         description="Search and filter structured logs across services"
+        actions={<TimeRangeControl live={false} />}
       />
 
       <div className="flex flex-col sm:flex-row gap-2 mb-4">

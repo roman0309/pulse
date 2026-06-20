@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus, Trash2, BellRing } from "lucide-react";
 import { api } from "@/services/api";
+import { toast } from "@/lib/toast";
 import {
   Button,
   Card,
@@ -37,7 +38,10 @@ export function AlertRules({ projectId }: { projectId: string }) {
   });
   const del = useMutation({
     mutationFn: (id: string) => api.deleteAlertRule(projectId, id),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["alert-rules", projectId] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["alert-rules", projectId] });
+      toast.success("Rule deleted");
+    },
   });
 
   return (
@@ -175,7 +179,11 @@ function RuleModal({
         notify_url: inline ? form.notify_url : "",
       } as never);
     },
-    onSuccess: onSaved,
+    onSuccess: () => {
+      toast.success("Alert rule created");
+      onSaved();
+    },
+    onError: () => toast.error("Couldn't create rule"),
   });
 
   return (

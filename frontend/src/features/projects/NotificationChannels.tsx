@@ -14,6 +14,7 @@ import {
   Badge,
 } from "@/components/ui/primitives";
 import { EmptyState, Spinner, Modal } from "@/components/common";
+import { toast } from "@/lib/toast";
 import type { NotificationChannel } from "@/types";
 
 // Reusable notification channels (Telegram / Slack / webhook). Configure a bot
@@ -30,7 +31,10 @@ export function NotificationChannels({ projectId }: { projectId: string }) {
 
   const del = useMutation({
     mutationFn: (id: string) => api.deleteChannel(projectId, id),
-    onSuccess: invalidate,
+    onSuccess: () => {
+      invalidate();
+      toast.success("Channel deleted");
+    },
   });
 
   return (
@@ -86,8 +90,15 @@ function ChannelRow({
   const [result, setResult] = useState<{ ok: boolean; msg: string } | null>(null);
   const test = useMutation({
     mutationFn: () => api.testChannel(projectId, channel.id),
-    onSuccess: () => setResult({ ok: true, msg: "Sent — check the channel" }),
-    onError: (e) => setResult({ ok: false, msg: e instanceof Error ? e.message : "failed" }),
+    onSuccess: () => {
+      setResult({ ok: true, msg: "Sent — check the channel" });
+      toast.success(`Test sent to ${channel.name}`);
+    },
+    onError: (e) => {
+      const msg = e instanceof Error ? e.message : "failed";
+      setResult({ ok: false, msg });
+      toast.error(`Test failed: ${msg}`);
+    },
   });
 
   return (
@@ -162,6 +173,7 @@ function AddChannelModal({
     onSuccess: () => {
       reset();
       onAdded();
+      toast.success("Channel added");
     },
     onError: (e) => setErr(e instanceof Error ? e.message : "failed"),
   });

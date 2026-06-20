@@ -19,6 +19,7 @@ import { api } from "@/services/api";
 import { cn } from "@/lib/utils";
 import { useProjectReady } from "@/hooks/useProjectReady";
 import { Spinner } from "@/components/common";
+import { ProjectSwitcher } from "@/components/common/ProjectSwitcher";
 
 type NavItem = {
   to: string;
@@ -98,9 +99,8 @@ export function AppLayout() {
     <div className="flex h-screen bg-bg">
       {/* Sidebar */}
       <aside className="hidden md:flex w-60 flex-col border-r border-border bg-surface">
-        <div className="flex items-center gap-2 px-5 h-14 border-b border-border">
-          <Activity className="h-5 w-5 text-primary" />
-          <span className="font-semibold text-fg">Pulse</span>
+        <div className="border-b border-border p-3">
+          <ProjectSwitcher />
         </div>
         <nav className="flex-1 p-3 space-y-1">
           {nav.map((item) => {

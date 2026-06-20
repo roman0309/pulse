@@ -3,6 +3,8 @@ import { Badge } from "@/components/ui/primitives";
 import type { AlertSeverity, AlertStatus, ServiceStatus } from "@/types";
 import { cn } from "@/lib/utils";
 
+export { TimeRangeControl } from "./TimeRangeControl";
+
 export function PageHeader({
   title,
   description,
