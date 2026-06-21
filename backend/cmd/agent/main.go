@@ -19,6 +19,7 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
+	"regexp"
 	"strings"
 	"time"
 
@@ -57,6 +58,9 @@ func main() {
 
 	// Ship Docker container logs (best-effort; needs the mounted docker socket).
 	go runLogs(cfg.endpoint, cfg.key)
+
+	// Record deployments when containers are (re)created.
+	go runDeployments(cfg.endpoint, cfg.key)
 
 	// Prime the CPU counter so the first real reading is meaningful.
 	_, _ = cpu.Percent(0, false)
@@ -186,7 +190,18 @@ type logLine struct {
 	Service   string `json:"service"`
 	Level     string `json:"level"`
 	Message   string `json:"message"`
+	TraceID   string `json:"trace_id,omitempty"`
 	Timestamp string `json:"timestamp"`
+}
+
+// traceIDRe finds a trace id logged inline, e.g. trace_id=abc, traceID:"abc".
+var traceIDRe = regexp.MustCompile(`(?i)trace[_-]?id["']?\s*[:=]\s*["']?([0-9a-f]{16,32})`)
+
+func parseTraceID(msg string) string {
+	if m := traceIDRe.FindStringSubmatch(msg); len(m) == 2 {
+		return strings.ToLower(m[1])
+	}
+	return ""
 }
 
 // runLogs ships Docker container logs to Pulse. Best-effort: needs the docker
@@ -234,6 +249,7 @@ func collectLogs(endpoint, key string, cursors map[string]time.Time) {
 				Service:   name,
 				Level:     detectLevel(msg),
 				Message:   truncate(msg, 4000),
+				TraceID:   parseTraceID(msg),
 				Timestamp: ts.UTC().Format(time.RFC3339Nano),
 			})
 			if ts.After(cursors[name]) {
@@ -274,6 +290,58 @@ func parseLogLine(line string) (time.Time, string, bool) {
 		return time.Time{}, "", false
 	}
 	return ts, line[sp+1:], true
+}
+
+// ---------- Deployment detection ----------
+
+type deployItem struct {
+	Service string `json:"service"`
+	Version string `json:"version"`
+	Status  string `json:"status"`
+}
+
+// runDeployments watches container creation times; when a container is
+// recreated (a deploy), it records a deployment. The first poll just snapshots,
+// so existing containers aren't reported as deployments on agent start.
+func runDeployments(endpoint, key string) {
+	if _, err := dockerOut("version", "--format", "{{.Server.Version}}"); err != nil {
+		return
+	}
+	seen := map[string]string{} // container name -> CreatedAt
+	first := true
+	t := time.NewTicker(30 * time.Second)
+	defer t.Stop()
+	for {
+		out, err := dockerOut("ps", "--format", "{{.Names}}\t{{.CreatedAt}}\t{{.Image}}")
+		if err == nil {
+			var batch []deployItem
+			for _, line := range strings.Split(out, "\n") {
+				parts := strings.Split(strings.TrimRight(line, "\r"), "\t")
+				if len(parts) != 3 {
+					continue
+				}
+				name, created, image := parts[0], parts[1], parts[2]
+				if name == "pulse-agent" {
+					continue
+				}
+				if prev, ok := seen[name]; ok && prev != created && !first {
+					batch = append(batch, deployItem{Service: name, Version: image, Status: "success"})
+				}
+				seen[name] = created
+			}
+			if len(batch) > 0 {
+				if body, e := json.Marshal(map[string]any{"deployments": batch}); e == nil {
+					if err := postJSON(context.Background(), endpoint+"/api/v1/ingest/deployments", key, body); err != nil {
+						log.Printf("deployments push error: %v", err)
+					} else {
+						log.Printf("recorded %d deployment(s)", len(batch))
+					}
+				}
+			}
+			first = false
+		}
+		<-t.C
+	}
 }
 
 func detectLevel(msg string) string {

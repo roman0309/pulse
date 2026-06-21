@@ -17,7 +17,7 @@ func (r *LogRepo) Insert(ctx context.Context, logs []entities.LogEntry) error {
 		return nil
 	}
 	batch, err := r.conn.PrepareBatch(ctx,
-		`INSERT INTO metrics_db.logs (project_id, service_id, service_name, level, message, metadata, timestamp)`)
+		`INSERT INTO metrics_db.logs (project_id, service_id, service_name, level, message, metadata, trace_id, timestamp)`)
 	if err != nil {
 		return err
 	}
@@ -26,7 +26,7 @@ func (r *LogRepo) Insert(ctx context.Context, logs []entities.LogEntry) error {
 		if md == "" {
 			md = "{}"
 		}
-		if err := batch.Append(l.ProjectID, l.ServiceID, l.ServiceName, l.Level, l.Message, md, l.Timestamp); err != nil {
+		if err := batch.Append(l.ProjectID, l.ServiceID, l.ServiceName, l.Level, l.Message, md, l.TraceID, l.Timestamp); err != nil {
 			return err
 		}
 	}
@@ -42,12 +42,12 @@ func (r *LogRepo) DeleteService(ctx context.Context, projectID, serviceID string
 
 // Query returns logs filtered by service, level and a full-text search term,
 // newest first, with pagination via limit/offset.
-func (r *LogRepo) Query(ctx context.Context, projectID, serviceID, level, search string, from, to time.Time, limit, offset int) ([]entities.LogEntry, error) {
+func (r *LogRepo) Query(ctx context.Context, projectID, serviceID, level, search, traceID string, from, to time.Time, limit, offset int) ([]entities.LogEntry, error) {
 	if limit <= 0 || limit > 1000 {
 		limit = 100
 	}
 	query := `
-		SELECT project_id, service_id, service_name, level, message, metadata, timestamp
+		SELECT project_id, service_id, service_name, level, message, metadata, trace_id, timestamp
 		FROM metrics_db.logs
 		WHERE project_id = ? AND timestamp BETWEEN ? AND ?`
 	args := []any{projectID, from, to}
@@ -59,6 +59,10 @@ func (r *LogRepo) Query(ctx context.Context, projectID, serviceID, level, search
 	if level != "" {
 		query += " AND level = ?"
 		args = append(args, level)
+	}
+	if traceID != "" {
+		query += " AND trace_id = ?"
+		args = append(args, traceID)
 	}
 	if search != "" {
 		query += " AND positionCaseInsensitive(message, ?) > 0"
@@ -76,7 +80,7 @@ func (r *LogRepo) Query(ctx context.Context, projectID, serviceID, level, search
 	var out []entities.LogEntry
 	for rows.Next() {
 		var l entities.LogEntry
-		if err := rows.Scan(&l.ProjectID, &l.ServiceID, &l.ServiceName, &l.Level, &l.Message, &l.Metadata, &l.Timestamp); err != nil {
+		if err := rows.Scan(&l.ProjectID, &l.ServiceID, &l.ServiceName, &l.Level, &l.Message, &l.Metadata, &l.TraceID, &l.Timestamp); err != nil {
 			return nil, err
 		}
 		out = append(out, l)

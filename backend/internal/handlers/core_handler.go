@@ -419,7 +419,7 @@ func (h *CoreHandler) Logs(c *gin.Context) {
 	}
 	from, to := parseTimeRange(c, 24*time.Hour)
 	logs, err := h.core.QueryLogs(c.Request.Context(), middleware.UserID(c), projectID,
-		c.Query("service_id"), c.Query("level"), c.Query("search"),
+		c.Query("service_id"), c.Query("level"), c.Query("search"), c.Query("trace_id"),
 		from, to, queryInt(c, "limit", 100), queryInt(c, "offset", 0))
 	if err != nil {
 		handleDomainError(c, err)

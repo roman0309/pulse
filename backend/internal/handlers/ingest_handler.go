@@ -75,6 +75,7 @@ func (h *IngestHandler) OTLPLogs(c *gin.Context) {
 			Level:       l.Level,
 			Message:     l.Message,
 			Metadata:    l.Metadata,
+			TraceID:     l.TraceID,
 			Timestamp:   l.Timestamp,
 		})
 	}
@@ -162,6 +163,7 @@ func (h *IngestHandler) IngestLogsJSON(c *gin.Context) {
 			Service   string `json:"service" binding:"required"`
 			Level     string `json:"level"`
 			Message   string `json:"message"`
+			TraceID   string `json:"trace_id"`
 			Timestamp string `json:"timestamp"`
 		} `json:"logs" binding:"required,dive"`
 	}
@@ -184,6 +186,7 @@ func (h *IngestHandler) IngestLogsJSON(c *gin.Context) {
 			Level:       normalizeLevel(l.Level),
 			Message:     l.Message,
 			Metadata:    "{}",
+			TraceID:     l.TraceID,
 			Timestamp:   parseTimestamp(l.Timestamp),
 		})
 	}
@@ -192,6 +195,38 @@ func (h *IngestHandler) IngestLogsJSON(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusAccepted, gin.H{"ingested": len(logs)})
+}
+
+// IngestDeploymentsJSON handles POST /api/v1/ingest/deployments — the agent
+// posts here when it detects a container was (re)deployed. Body:
+//
+//	{"deployments":[{"service":"gateway","version":"ghcr.io/…:v2","status":"success"}]}
+func (h *IngestHandler) IngestDeploymentsJSON(c *gin.Context) {
+	var req struct {
+		Deployments []struct {
+			Service string `json:"service" binding:"required"`
+			Version string `json:"version"`
+			Status  string `json:"status"`
+		} `json:"deployments" binding:"required,dive"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		badRequest(c, err)
+		return
+	}
+	projectID := middleware.IngestProjectID(c)
+	keyID := middleware.IngestKeyID(c)
+	items := make([]services.DeployItem, 0, len(req.Deployments))
+	for _, d := range req.Deployments {
+		if anonService(d.Service) {
+			continue
+		}
+		items = append(items, services.DeployItem{Service: d.Service, Version: d.Version, Status: d.Status})
+	}
+	if err := h.core.IngestDeployments(c.Request.Context(), projectID, keyID, items); err != nil {
+		serverError(c, err)
+		return
+	}
+	c.JSON(http.StatusAccepted, gin.H{"ingested": len(items)})
 }
 
 func normalizeLevel(level string) string {

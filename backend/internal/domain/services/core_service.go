@@ -579,6 +579,51 @@ func (s *CoreService) ListDeployments(ctx context.Context, userID, projectID uui
 	return s.Deployments.ListByProject(ctx, projectID, serviceID, limit)
 }
 
+// DeployItem is one auto-detected deployment (from the agent's container watch).
+type DeployItem struct {
+	Service string
+	Version string
+	Status  string
+}
+
+// IngestDeployments records deployments detected by an agent (key-authed, no
+// user). Each creates a deployment + a timeline event so RCA can correlate.
+func (s *CoreService) IngestDeployments(ctx context.Context, projectID, keyID uuid.UUID, items []DeployItem) error {
+	for _, it := range items {
+		if it.Service == "" {
+			continue
+		}
+		sid, err := s.Services.GetOrCreateByName(ctx, projectID, it.Service, "production", keyID)
+		if err != nil {
+			continue
+		}
+		status := it.Status
+		if status == "" {
+			status = "success"
+		}
+		d := &entities.Deployment{
+			ProjectID: projectID, ServiceID: sid, ServiceName: it.Service,
+			Version: it.Version, Status: status, Environment: "production",
+			DeployedBy: "agent", CreatedAt: time.Now(),
+		}
+		if err := s.Deployments.Create(ctx, d); err != nil {
+			continue
+		}
+		svcID := sid
+		ev := &entities.TimelineEvent{
+			ProjectID:   projectID,
+			ServiceID:   &svcID,
+			Type:        entities.EventDeployment,
+			Title:       "Deployment " + d.Version,
+			Description: it.Service + " redeployed",
+			OccurredAt:  d.CreatedAt,
+		}
+		_ = s.Timeline.Create(ctx, ev)
+		s.broadcast(projectID, "timeline", ev)
+	}
+	return nil
+}
+
 // ---------- Alerts ----------
 
 func (s *CoreService) CreateAlert(ctx context.Context, userID uuid.UUID, a *entities.Alert) error {
@@ -653,11 +698,11 @@ func (s *CoreService) QueryMetrics(ctx context.Context, userID, projectID uuid.U
 
 // ---------- Logs ----------
 
-func (s *CoreService) QueryLogs(ctx context.Context, userID, projectID uuid.UUID, serviceID, level, search string, from, to time.Time, limit, offset int) ([]entities.LogEntry, error) {
+func (s *CoreService) QueryLogs(ctx context.Context, userID, projectID uuid.UUID, serviceID, level, search, traceID string, from, to time.Time, limit, offset int) ([]entities.LogEntry, error) {
 	if _, err := s.requireProjectAccess(ctx, userID, projectID); err != nil {
 		return nil, err
 	}
-	return s.Logs.Query(ctx, projectID.String(), serviceID, level, search, from, to, limit, offset)
+	return s.Logs.Query(ctx, projectID.String(), serviceID, level, search, traceID, from, to, limit, offset)
 }
 
 // ---------- Root Cause Analysis ----------
@@ -672,7 +717,7 @@ func (s *CoreService) Analyze(ctx context.Context, userID, projectID uuid.UUID, 
 
 	latency, _ := s.Metrics.Query(ctx, pid, "", "latency_p95", from, now, 60)
 	errs, _ := s.Metrics.Query(ctx, pid, "", "error_rate", from, now, 60)
-	logs, _ := s.Logs.Query(ctx, pid, "", "error", "", from, now, 500, 0)
+	logs, _ := s.Logs.Query(ctx, pid, "", "error", "", "", from, now, 500, 0)
 	alerts, _ := s.Alerts.ListByProject(ctx, projectID, nil)
 	deps, _ := s.Deployments.ListByProject(ctx, projectID, nil, 50)
 	svcs, _ := s.Services.ListByProject(ctx, projectID)

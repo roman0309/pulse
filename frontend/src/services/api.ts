@@ -227,6 +227,7 @@ export const api = {
       offset?: number;
       from?: string;
       to?: string;
+      traceId?: string;
     } = {}
   ) =>
     request<{ logs: LogEntry[] }>(
@@ -238,6 +239,7 @@ export const api = {
         offset: opts.offset,
         from: opts.from,
         to: opts.to,
+        trace_id: opts.traceId,
       })}`
     ).then((r) => r.logs ?? []),
 

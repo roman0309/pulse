@@ -113,6 +113,7 @@ export interface LogEntry {
   level: "info" | "warning" | "error";
   message: string;
   metadata: string;
+  trace_id?: string;
   timestamp: string;
 }
 

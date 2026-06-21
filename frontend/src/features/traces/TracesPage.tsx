@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
-import { useParams } from "react-router-dom";
+import { Link, useParams, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { ChevronLeft, Network, AlertTriangle } from "lucide-react";
+import { ChevronLeft, Network, AlertTriangle, ScrollText } from "lucide-react";
 import { api } from "@/services/api";
 import { Badge, Card, CardContent, Select } from "@/components/ui/primitives";
 import { PageHeader, Spinner, EmptyState, TimeRangeControl } from "@/components/common";
@@ -24,8 +24,9 @@ function fmtMs(ms: number) {
 
 export function TracesPage() {
   const { projectId } = useParams();
+  const [searchParams] = useSearchParams();
   const { range, live } = useRangeStore();
-  const [selected, setSelected] = useState<string | null>(null);
+  const [selected, setSelected] = useState<string | null>(searchParams.get("trace"));
   const [service, setService] = useState("");
   const [errorsOnly, setErrorsOnly] = useState(false);
 
@@ -130,9 +131,17 @@ function TraceDetail({ projectId, traceId, onBack }: { projectId: string; traceI
 
   return (
     <div>
-      <button onClick={onBack} className="mb-3 inline-flex items-center gap-1 text-sm text-fg-muted transition hover:text-fg">
-        <ChevronLeft className="h-4 w-4" /> Back to traces
-      </button>
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <button onClick={onBack} className="inline-flex items-center gap-1 text-sm text-fg-muted transition hover:text-fg">
+          <ChevronLeft className="h-4 w-4" /> Back to traces
+        </button>
+        <Link
+          to={`/projects/${projectId}/logs?trace=${traceId}`}
+          className="inline-flex items-center gap-1 text-sm text-primary transition hover:underline"
+        >
+          <ScrollText className="h-4 w-4" /> View logs
+        </Link>
+      </div>
       {trace.isLoading ? (
         <Spinner />
       ) : trace.data && trace.data.length > 0 ? (

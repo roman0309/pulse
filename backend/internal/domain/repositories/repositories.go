@@ -139,7 +139,7 @@ type AlertRuleRepository interface {
 // LogRepository (ClickHouse) stores and queries structured logs.
 type LogRepository interface {
 	Insert(ctx context.Context, logs []entities.LogEntry) error
-	Query(ctx context.Context, projectID string, serviceID, level, search string, from, to time.Time, limit, offset int) ([]entities.LogEntry, error)
+	Query(ctx context.Context, projectID string, serviceID, level, search, traceID string, from, to time.Time, limit, offset int) ([]entities.LogEntry, error)
 	// DeleteService purges all logs for one service.
 	DeleteService(ctx context.Context, projectID, serviceID string) error
 }

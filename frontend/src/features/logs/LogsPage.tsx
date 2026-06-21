@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useParams, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
-import { Search, ScrollText, ChevronRight } from "lucide-react";
+import { Search, ScrollText, ChevronRight, X, Network } from "lucide-react";
 import { api } from "@/services/api";
 import { Card, Input, Select } from "@/components/ui/primitives";
 import { PageHeader, Spinner, EmptyState, TimeRangeControl } from "@/components/common";
@@ -18,11 +18,13 @@ const keyOf = (l: LogEntry) => `${l.timestamp}|${l.service_name}|${l.message}`;
 
 export function LogsPage() {
   const { projectId } = useParams();
+  const navigate = useNavigate();
   const [search, setSearch] = useState("");
   const [debounced, setDebounced] = useState("");
   const [level, setLevel] = useState("");
   const [searchParams] = useSearchParams();
   const [serviceId, setServiceId] = useState(searchParams.get("service") ?? "");
+  const traceId = searchParams.get("trace") ?? "";
   const { range } = useRangeStore();
   const [live, setLive] = useState(false);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -41,12 +43,13 @@ export function LogsPage() {
   });
 
   const query = useInfiniteQuery({
-    queryKey: ["logs", projectId, debounced, level, serviceId, range],
+    queryKey: ["logs", projectId, debounced, level, serviceId, traceId, range],
     queryFn: ({ pageParam = 0 }) =>
       api.logs(projectId!, {
         search: debounced || undefined,
         level: level || undefined,
         serviceId: serviceId || undefined,
+        traceId: traceId || undefined,
         from: rangeWindow(range).from,
         limit: PAGE,
         offset: pageParam,
@@ -123,6 +126,21 @@ export function LogsPage() {
         }
       />
 
+      {traceId && (
+        <div className="mb-3 flex items-center justify-between gap-2 rounded-md border border-primary/30 bg-primary/5 px-3 py-2 text-xs">
+          <span className="flex items-center gap-1.5 text-fg">
+            <Network className="h-3.5 w-3.5 text-primary" />
+            Logs for trace <span className="font-mono">{traceId.slice(0, 16)}…</span>
+          </span>
+          <button
+            onClick={() => navigate(`/projects/${projectId}/logs`)}
+            className="flex items-center gap-1 text-fg-muted transition hover:text-fg"
+          >
+            <X className="h-3.5 w-3.5" /> clear
+          </button>
+        </div>
+      )}
+
       <div className="flex flex-col sm:flex-row gap-2 mb-4">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-fg-muted" />
@@ -166,7 +184,7 @@ export function LogsPage() {
               const k = keyOf(l);
               const open = expanded.has(k);
               return (
-                <LogRow key={`${k}-${i}`} log={l} open={open} highlight={recent.has(k)} onToggle={() => toggle(k)} />
+                <LogRow key={`${k}-${i}`} projectId={projectId!} log={l} open={open} highlight={recent.has(k)} onToggle={() => toggle(k)} />
               );
             })}
             <div ref={sentinel} className="h-10 flex items-center justify-center">
@@ -180,11 +198,13 @@ export function LogsPage() {
 }
 
 function LogRow({
+  projectId,
   log,
   open,
   highlight,
   onToggle,
 }: {
+  projectId: string;
   log: LogEntry;
   open: boolean;
   highlight: boolean;
@@ -205,6 +225,7 @@ function LogRow({
         <span className="whitespace-nowrap text-fg-muted">{formatDateTime(log.timestamp)}</span>
         <span className={cn("w-14 shrink-0 font-medium uppercase", levelColor(log.level))}>{log.level}</span>
         <span className="whitespace-nowrap text-primary">{log.service_name}</span>
+        {log.trace_id && <Network className="mt-0.5 h-3.5 w-3.5 shrink-0 text-fg-muted" />}
         <span className={cn("flex-1 text-fg", !open && "truncate")}>{log.message}</span>
       </button>
       {open && (
@@ -225,6 +246,17 @@ function LogRow({
               </div>
             ))}
           </div>
+          {log.trace_id && (
+            <div className="flex justify-between gap-3 border-b border-border/30 py-1">
+              <span className="text-fg-muted">Trace</span>
+              <Link
+                to={`/projects/${projectId}/traces?trace=${log.trace_id}`}
+                className="break-all text-right font-mono text-primary hover:underline"
+              >
+                {log.trace_id}
+              </Link>
+            </div>
+          )}
           {metaEntries.length > 0 && (
             <div>
               <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-fg-muted">Metadata</p>

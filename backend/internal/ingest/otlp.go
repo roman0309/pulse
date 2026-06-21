@@ -1,6 +1,7 @@
 package ingest
 
 import (
+	"encoding/hex"
 	"encoding/json"
 	"strings"
 	"time"
@@ -55,11 +56,16 @@ func DecodeOTLPLogs(body []byte) ([]RawLog, error) {
 		svc := serviceName(rl.Resource)
 		for _, sl := range rl.ScopeLogs {
 			for _, lr := range sl.LogRecords {
+				traceID := ""
+				if len(lr.TraceId) > 0 {
+					traceID = hex.EncodeToString(lr.TraceId)
+				}
 				out = append(out, RawLog{
 					ServiceName: svc,
 					Level:       mapSeverity(int32(lr.SeverityNumber), lr.SeverityText),
 					Message:     anyString(lr.Body),
 					Metadata:    attrsJSON(lr.Attributes),
+					TraceID:     traceID,
 					Timestamp:   unixNano(lr.TimeUnixNano),
 				})
 			}

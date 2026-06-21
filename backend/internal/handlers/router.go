@@ -54,6 +54,7 @@ func NewRouter(
 		ingestGroup.POST("/api/v1/prom/write", ingest.PromRemoteWrite)
 		ingestGroup.POST("/api/v1/ingest/metrics", ingest.IngestMetricsJSON)
 		ingestGroup.POST("/api/v1/ingest/logs", ingest.IngestLogsJSON)
+		ingestGroup.POST("/api/v1/ingest/deployments", ingest.IngestDeploymentsJSON)
 		// agent control channel (agent dials out; key-authed)
 		ingestGroup.GET("/api/v1/agent/connect", core.AgentConnect)
 	}

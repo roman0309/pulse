@@ -326,5 +326,6 @@ type LogEntry struct {
 	Level       string    `json:"level"`
 	Message     string    `json:"message"`
 	Metadata    string    `json:"metadata"`
+	TraceID     string    `json:"trace_id"`
 	Timestamp   time.Time `json:"timestamp"`
 }

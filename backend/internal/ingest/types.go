@@ -18,6 +18,7 @@ type RawLog struct {
 	Level       string
 	Message     string
 	Metadata    string
+	TraceID     string
 	Timestamp   time.Time
 }
 
